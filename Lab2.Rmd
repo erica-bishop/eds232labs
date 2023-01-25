@@ -172,13 +172,10 @@ pumpkins_split2 <- new_pumpkins %>%
 ptrain <- training(pumpkins_split2)
 ptest <- testing(pumpkins_split2)
 
-# Create a recipe for preprocessing the 
-#use 3rd degree (4th throws error)
-# pumvar_recipe <- recipe(price ~ variety, data = ptrain) |> 
-#   step_integer(all_predictors(), zero_based = TRUE) |> 
-#   step_poly(all_predictors(), degree = 3) #NOT USING poly recipe because need linear to encode variety
 
 #Using a linear recipe to make the encode column work
+#there are only two varieties (miniature and pie - so a linear works better here than polynomial)
+#or at least I think that's why I can't get the plotting to work with a polynomial recipe
 lin_pumvarrecipe <- recipe(price ~ variety,
                            data = ptrain) |> 
   step_integer(all_predictors(), zero_based = TRUE)
@@ -245,7 +242,7 @@ metrics(data = mod_results,
 #need to encode variety column in order to visualize
 
 #Encode variety column with pumvar_recipe
-variety_encode <- lin_pumvarrecipe %>%  #WHY won't this step work with a polynomial recipe???
+variety_encode <- lin_pumvarrecipe %>%  #WHY won't this step work with a polynomial recipe? - is it because there are only two varieties?
   prep() %>% 
   bake(new_data = ptest) %>% 
   select(variety)
