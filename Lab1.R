@@ -1,4 +1,4 @@
-## ----setup, include=FALSE-----------------------------------------------------
+## ----setup, include=FALSE-------------------------------------------------------------------------------------------------
 knitr::opts_chunk$set(echo = TRUE)
 library("tidymodels")
 library("tidyverse")
@@ -8,11 +8,11 @@ library("corrplot")
 dat <- read_csv(file = "https://raw.githubusercontent.com/MaRo406/eds-232-machine-learning/main/data/pumpkin-data.csv")
 
 
-## ----data---------------------------------------------------------------------
+## ----data-----------------------------------------------------------------------------------------------------------------
 glimpse(dat)
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 
 # Clean names to the snake_case convention
 
@@ -23,7 +23,7 @@ pumpkins <- dat %>% clean_names(case = "snake")
 pumpkins %>% names()
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 pumpkins <- pumpkins %>% select(variety, city_name, package, low_price, high_price, date)
 
 ## Print data set
@@ -31,7 +31,7 @@ pumpkins <- pumpkins %>% select(variety, city_name, package, low_price, high_pri
 pumpkins %>% slice_head(n = 5)
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 
 ## Load lubridate
 
@@ -51,13 +51,13 @@ pumpkins %>%
 pumpkins %>% slice_head(n = 7)
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Create a new column price
 pumpkins <- pumpkins %>% 
   mutate(price = (low_price+ high_price)/2)
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 
 sales_plot <- ggplot(data = pumpkins,
                     aes(x = day,
@@ -68,7 +68,7 @@ sales_plot
 
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Verify the distinct observations in Package column
 pumpkins %>% 
   distinct(package)
@@ -76,7 +76,7 @@ pumpkins %>%
 unique(pumpkins$package) #note: distinct is faster than unique but they do the same thing
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Retain only pumpkins with "bushel" in the package column
 new_pumpkins <- pumpkins |> 
   filter(str_detect(package, "bushel"))
@@ -89,7 +89,7 @@ new_pumpkins %>%
   slice_head(n = 10)
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Convert the price if the Package contains fractional bushel values
 new_pumpkins <- new_pumpkins %>% 
   mutate(price = case_when(
@@ -102,7 +102,7 @@ new_pumpkins %>%
   slice_head(n = 30)
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 
 # Set theme
 theme_set(theme_light())
@@ -113,7 +113,7 @@ new_pumpkins %>%
   geom_point(size = 1.6)
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Find the average price of pumpkins per month
 pumpkin_summary <- new_pumpkins |> 
   group_by(month) |> 
@@ -121,7 +121,7 @@ pumpkin_summary <- new_pumpkins |>
 
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Find the average price of pumpkins per month then plot a bar chart
 
 month_plot <- ggplot(data = pumpkin_summary,
@@ -133,7 +133,7 @@ month_plot
 
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Specify a recipe
 pumpkins_recipe <- recipe(price ~ ., data = new_pumpkins) %>% 
   step_integer(all_predictors(), zero_based = TRUE)
@@ -143,7 +143,7 @@ pumpkins_recipe
 
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Prep the recipe
 pumpkins_prep <- prep(pumpkins_recipe)
 
@@ -155,14 +155,14 @@ baked_pumpkins %>%
   slice_head(n = 10)
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Find the correlation between the package and the price
 price_package <- cor(baked_pumpkins$package, baked_pumpkins$price)
 
 print(paste("There is a", round(price_package, 3), "correlation between pumpkin package and price."))
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 price_city <- cor(baked_pumpkins$price, baked_pumpkins$city_name)
 
 print(paste("There is a", round(price_city, 3), "correlation between pumpkin price and the city."))
@@ -174,7 +174,7 @@ print(paste("There is a", round(price_var, 3), "correlation between pumpkin pric
 
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Load the corrplot package
 library(corrplot)
 
@@ -188,7 +188,7 @@ corrplot(corr_mat, method = "shade", shade.col = NA, tl.col = "black", tl.srt = 
 
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 set.seed(123) #sets starting point for random number generation (to randomly split data)
 # Split the data into training and test sets
 pumpkins_split <- new_pumpkins %>% 
@@ -211,7 +211,7 @@ lm_spec <- linear_reg() %>%
   set_mode("regression")
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Hold modelling components in a workflow
 lm_wf <- workflow() %>% 
   add_recipe(lm_pumpkins_recipe) %>% 
@@ -221,7 +221,7 @@ lm_wf <- workflow() %>%
 lm_wf
 
 
-## -----------------------------------------------------------------------------
+## -------------------------------------------------------------------------------------------------------------------------
 # Train the model
 lm_wf_fit <- lm_wf %>% 
   fit(data = pumpkins_train)
@@ -230,7 +230,7 @@ lm_wf_fit <- lm_wf %>%
 lm_wf_fit
 
 
-## ----prediction_test----------------------------------------------------------
+## ----prediction_test------------------------------------------------------------------------------------------------------
 # Make predictions for the test set
 predictions <- lm_wf_fit %>% 
   predict(new_data = pumpkins_test)
@@ -247,14 +247,14 @@ lm_results %>%
   slice_head(n = 10)
 
 
-## ----evaluate_lr--------------------------------------------------------------
+## ----evaluate_lr----------------------------------------------------------------------------------------------------------
 # Evaluate performance of linear regression
 metrics(data = lm_results,
         truth = price,
         estimate = .pred)
 
 
-## ----encode_package-----------------------------------------------------------
+## ----encode_package-------------------------------------------------------------------------------------------------------
 # Encode package column
 package_encode <- lm_pumpkins_recipe %>% 
   prep() %>% 
