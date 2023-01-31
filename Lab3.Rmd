@@ -78,8 +78,13 @@ Y <- ab_train$Rings
 -   ***Question 3***. Fit a ridge model (controlled by the alpha parameter) using the glmnet() function. Make a plot showing how the estimated coefficients change with lambda. (Hint: You can call plot() directly on the glmnet() objects).
 
 ```{r}
+#fit a ridge model with alpha = 0
+ridge_mod <- glmnet(x = X,
+                    y = Y,
+                    alpha = 0)
 
-
+#plot
+plot(ridge_mod, xvar = "lambda")
 
 ```
 
@@ -90,9 +95,44 @@ In lecture we learned about two methods of estimating our model's generalization
 
 -   ***Question 4***. This time fit a ridge regression model and a lasso model, both with using cross validation. The glmnet package kindly provides a cv.glmnet() function to do this (similar to the glmnet() function that we just used). Use the alpha argument to control which type of model you are running. Plot the results.
 
+```{r}
+
+#create ridge model with k-fold cross-validation
+#default is 10 oflds, but can specify with nfolds =
+ridge_cv <- cv.glmnet(x = X,
+                      y = Y,
+                      alpha = 0)
+                      
+
+ridgecv_plot <- plot(ridge_cv, main = "Ridge penalty\n\n")
+
+#using the main = "" arg plots the same as xvar = lambda but without throwing an error - why?
+
+lasso_cv <- cv.glmnet(x = X,
+                       y = Y,
+                       alpha = 1)
+
+lassocv_plot <- plot(lasso_cv, main = "Lasso penalty\n\n") 
+
+ridgecv_plot 
+lassocv_plot
+
+```
+
 -   ***Question 5***. Interpret the graphs. What is being show on the axes here? How does the performance of the models change with the value of lambda?
 
+
+
 -   ***Question 6***. Inspect the ridge model object you created with cv.glmnet(). The \$cvm column shows the MSEs for each cv fold. What is the minimum MSE? What is the value of lambda associated with this MSE minimum?
+
+```{r}
+
+summary(ridge_cv)
+
+broom::tidy(ridge_cv)
+
+```
+
 
 -   ***Question 7***. Do the same for the lasso model. What is the minimum MSE? What is the value of lambda associated with this MSE minimum?
 
