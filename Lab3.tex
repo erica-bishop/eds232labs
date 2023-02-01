@@ -350,13 +350,9 @@ syntax.
 \subsubsection{Fit a ridge regression
 model}\label{fit-a-ridge-regression-model}}
 
-\begin{itemize}
-\tightlist
-\item
-  \textbf{\emph{Question 2}}. Use the model.matrix() function to create
-  a predictor matrix, x, and assign the Rings variable to an outcome
-  vector, y.
-\end{itemize}
+\textbf{\emph{Question 2}}. Use the model.matrix() function to create a
+predictor matrix, x, and assign the Rings variable to an outcome vector,
+y.
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -370,14 +366,10 @@ model}\label{fit-a-ridge-regression-model}}
 \end{Highlighting}
 \end{Shaded}
 
-\begin{itemize}
-\tightlist
-\item
-  \textbf{\emph{Question 3}}. Fit a ridge model (controlled by the alpha
-  parameter) using the glmnet() function. Make a plot showing how the
-  estimated coefficients change with lambda. (Hint: You can call plot()
-  directly on the glmnet() objects).
-\end{itemize}
+\textbf{\emph{Question 3}}. Fit a ridge model (controlled by the alpha
+parameter) using the glmnet() function. Make a plot showing how the
+estimated coefficients change with lambda. (Hint: You can call plot()
+directly on the glmnet() objects).
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -405,15 +397,11 @@ that lambda is a tuning parameter that helps keep our model from
 over-fitting to the training data. Tuning is the process of finding the
 optima value of lamba.
 
-\begin{itemize}
-\tightlist
-\item
-  \textbf{\emph{Question 4}}. This time fit a ridge regression model and
-  a lasso model, both with using cross validation. The glmnet package
-  kindly provides a cv.glmnet() function to do this (similar to the
-  glmnet() function that we just used). Use the alpha argument to
-  control which type of model you are running. Plot the results.
-\end{itemize}
+\textbf{\emph{Question 4}}. This time fit a ridge regression model and a
+lasso model, both with using cross validation. The glmnet package kindly
+provides a cv.glmnet() function to do this (similar to the glmnet()
+function that we just used). Use the alpha argument to control which
+type of model you are running. Plot the results.
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -463,13 +451,9 @@ optima value of lamba.
 ## NULL
 \end{verbatim}
 
-\begin{itemize}
-\tightlist
-\item
-  \textbf{\emph{Question 5}}. Interpret the graphs. What is being show
-  on the axes here? How does the performance of the models change with
-  the value of lambda?
-\end{itemize}
+\textbf{\emph{Question 5}}. Interpret the graphs. What is being show on
+the axes here? How does the performance of the models change with the
+value of lambda?
 
 Both graphs show the mean squared error from the respective model
 (showed by the red dots with gray bars indicated the confidence
@@ -497,14 +481,10 @@ Because the MSE for the Lasso and Ridge regressions are similar, I would
 recommend proceeding with the Lasso model that uses just five variables
 instead of the ridge model that retains all nine features.
 
-\begin{itemize}
-\tightlist
-\item
-  \textbf{\emph{Question 6}}. Inspect the ridge model object you created
-  with cv.glmnet(). The \$cvm column shows the MSEs for each cv fold.
-  What is the minimum MSE? What is the value of lambda associated with
-  this MSE minimum?
-\end{itemize}
+\textbf{\emph{Question 6}}. Inspect the ridge model object you created
+with cv.glmnet(). The \$cvm column shows the MSEs for each cv fold. What
+is the minimum MSE? What is the value of lambda associated with this MSE
+minimum?
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -533,13 +513,9 @@ instead of the ridge model that retains all nine features.
 ## [1] "The minimum MSE for the ridege model is 4.98 and the corresponding lambda value is 0.2"
 \end{verbatim}
 
-\begin{itemize}
-\tightlist
-\item
-  \textbf{\emph{Question 7}}. Do the same for the lasso model. What is
-  the minimum MSE? What is the value of lambda associated with this MSE
-  minimum?
-\end{itemize}
+\textbf{\emph{Question 7}}. Do the same for the lasso model. What is the
+minimum MSE? What is the value of lambda associated with this MSE
+minimum?
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -569,12 +545,8 @@ one standard error from the MSE minimum (\$lambda.1se).
 ## [1] "The lambda value within one standard error of the minimum MSE for the ridge model is 0.35, and the lambda value within one standard error of the overall minimum MSE for the lasso model is 0.06"
 \end{verbatim}
 
-\begin{itemize}
-\tightlist
-\item
-  \textbf{\emph{Question 8.}} Find the number of predictors associated
-  with this model (hint: the \$nzero is the \# of predictors column).
-\end{itemize}
+\textbf{\emph{Question 8.}} Find the number of predictors associated
+with this model (hint: the \$nzero is the \# of predictors column).
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -596,12 +568,8 @@ one standard error from the MSE minimum (\$lambda.1se).
 ## [1] "The lasso model uses 5 predictors."
 \end{verbatim}
 
-\begin{itemize}
-\tightlist
-\item
-  \textbf{Question 9.} Which regularized regression worked better for
-  this task, ridge or lasso? Explain your answer.
-\end{itemize}
+\textbf{Question 9.} Which regularized regression worked better for this
+task, ridge or lasso? Explain your answer.
 
 Both models worked similarly for this task - coming up with similar MSE
 values. However, because the lasso model had a slightly smaller MSE and
