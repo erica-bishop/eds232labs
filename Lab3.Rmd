@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(rsample)
 library(glmnet)
+library(tinytex)
 ```
 
 ## Lab 3: Predicting the age of abalone
@@ -32,11 +33,12 @@ abdat <- abdat |>
   select(!"...1")
 
 #take a look at distribution of rings (to see if transformation might be needed)
-ggplot(data = abdat,
-       aes(x = Rings)) +
-  geom_histogram()
+# ggplot(data = abdat,
+#        aes(x = Rings)) +
+#   geom_histogram()
 
 #distribution looks normal enough
+# commented out for conciseness of knitted output
 
 ```
 
@@ -88,7 +90,6 @@ plot(ridge_mod, xvar = "lambda")
 
 ```
 
-
 ### Using *k*-fold cross validation resampling and tuning our models
 
 In lecture we learned about two methods of estimating our model's generalization error by resampling, cross validation and bootstrapping. We'll use the *k*-fold cross validation method in this lab. Recall that lambda is a tuning parameter that helps keep our model from over-fitting to the training data. Tuning is the process of finding the optima value of lamba.
@@ -104,9 +105,8 @@ ridge_cv <- cv.glmnet(x = X,
                       alpha = 0)
                       
 
-ridgecv_plot <- plot(ridge_cv, main = "Ridge penalty\n\n")
-
-#using the main = "" arg plots the same as xvar = lambda but without throwing an error - why?
+ridgecv_plot <- plot(ridge_cv, 
+                     main = "Ridge penalty\n\n")
 
 lasso_cv <- cv.glmnet(x = X,
                        y = Y,
@@ -114,30 +114,59 @@ lasso_cv <- cv.glmnet(x = X,
 
 lassocv_plot <- plot(lasso_cv, main = "Lasso penalty\n\n") 
 
-ridgecv_plot 
-lassocv_plot
+ ridgecv_plot 
+ lassocv_plot
 
 ```
 
 -   ***Question 5***. Interpret the graphs. What is being show on the axes here? How does the performance of the models change with the value of lambda?
 
+Both graphs show the mean squared error from the respective model (showed by the red dots with gray bars indicated the confidence interval). The vertical gray dotted lines show the log of $\lambda$ value correlated with the minimum mean-squared error (the first bar) and the log of the $\lambda$ value within one standard error of the minimum MSE. The graphs use the log of $\lambda$ to make it easier to visualize the change in MSE in the model.
 
+For the ridge regression plot, a $Log(\lambda)$ value of around -1 to -0.5 will minimize the error and therefore produce a better model. The exact lambda values are calculated below. Ridge regressions do not reduce the number of features, so all nine of the variables included in the abalone data are included for each point calculated in the graph above.
+
+The lasso regression does reduce the number of features used from 9 to 5 (as shown in the upper horizontal axis). The MSE of the lasso model starts to rapidly increase after a $Log(\lambda)$ of about -2, and the largest value within one standard error is about -3. This correlates with a MSE of about 5, which is similar to the MSE produced by the ridge model.
+
+Because the MSE for the Lasso and Ridge regressions are similar, I would recommend proceeding with the Lasso model that uses just five variables instead of the ridge model that retains all nine features.
 
 -   ***Question 6***. Inspect the ridge model object you created with cv.glmnet(). The \$cvm column shows the MSEs for each cv fold. What is the minimum MSE? What is the value of lambda associated with this MSE minimum?
 
 ```{r}
 
-summary(ridge_cv)
+print(ridge_cv)
 
-broom::tidy(ridge_cv)
+print(paste("The minimum MSE for the ridege model is", round(min(ridge_cv$cvm), 2), "and the corresponding lambda value is", round(ridge_cv$lambda.min, 2)))
+
+
 
 ```
 
-
 -   ***Question 7***. Do the same for the lasso model. What is the minimum MSE? What is the value of lambda associated with this MSE minimum?
+
+```{r}
+
+print(paste("The minimum MSE for the lasso model is", round(min(lasso_cv$cvm), 2), "and the corresponding lambda value is about", round(lasso_cv$lambda.min, 3)))
+
+```
 
 Data scientists often use the "one-standard-error" rule when tuning lambda to select the best model. This rule tells us to pick the most parsimonious model (fewest number of predictors) while still remaining within one standard error of the overall minimum cross validation error. The cv.glmnet() model object has a column that automatically finds the value of lambda associated with the model that produces an MSE that is one standard error from the MSE minimum (\$lambda.1se).
 
+```{r}
+
+print(paste0("The lambda value within one standard error of the minimum MSE for the ridge model is ", round(ridge_cv$lambda.1se, 2), ", and the lambda value within one standard error of the overall minimum MSE for the lasso model is ", round(lasso_cv$lambda.1se, 2)))
+
+```
+
 -   ***Question 8.*** Find the number of predictors associated with this model (hint: the \$nzero is the \# of predictors column).
 
+```{r}
+
+print(paste("The ridge model uses", ridge_cv$nzero[ridge_cv$lambda == ridge_cv$lambda.1se], "predictors.")) #index to find where number of features corresponds to min lambda
+
+print(paste("The lasso model uses", lasso_cv$nzero[lasso_cv$lambda == lasso_cv$lambda.1se], "predictors."))
+
+```
+
 -   **Question 9.** Which regularized regression worked better for this task, ridge or lasso? Explain your answer.
+
+Both models worked similarly for this task - coming up with similar MSE values. However, because the lasso model had a slightly smaller MSE and used fewer features, it would be the better model for this task.
