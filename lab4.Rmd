@@ -3,6 +3,9 @@ title: "Lab 4"
 author: "Erica Bishop"
 date: "`r Sys.Date()`"
 output: pdf_document
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
@@ -19,13 +22,23 @@ library(patchwork)
 
 ## Lab 4: Fire and Tree Mortality
 
-The database we'll be working with today includes 36066 observations of individual trees involved in prescribed fires and wildfires occurring over 35 years, from 1981 to 2016. It is a subset of a larger fire and tree mortality database from the US Forest Service (see data description for the full database here: [link](https://www.nature.com/articles/s41597-020-0522-7#Sec10)). Our goal today is to predict the likelihood of tree mortality after a fire.
+The database we'll be working with today includes 36066 observations of
+individual trees involved in prescribed fires and wildfires occurring
+over 35 years, from 1981 to 2016. It is a subset of a larger fire and
+tree mortality database from the US Forest Service (see data description
+for the full database here:
+[link](https://www.nature.com/articles/s41597-020-0522-7#Sec10)). Our
+goal today is to predict the likelihood of tree mortality after a fire.
 
 ### Data Exploration
 
-Outcome variable: *yr1status* = tree status (0=alive, 1=dead) assessed one year post-fire.
+Outcome variable: *yr1status* = tree status (0=alive, 1=dead) assessed
+one year post-fire.
 
-Predictors: *YrFireName, Species, Genus_species, DBH_cm, CVS_percent, BCHM_m, BTL* (Information on these variables available in the database metadata ([link](https://www.fs.usda.gov/rds/archive/products/RDS-2020-0001-2/_metadata_RDS-2020-0001-2.html))).
+Predictors: *YrFireName, Species, Genus_species, DBH_cm, CVS_percent,
+BCHM_m, BTL* (Information on these variables available in the database
+metadata
+([link](https://www.fs.usda.gov/rds/archive/products/RDS-2020-0001-2/_metadata_RDS-2020-0001-2.html))).
 
 ```{r}
 trees_dat<- read_csv(file = "https://raw.githubusercontent.com/MaRo406/eds-232-machine-learning/main/data/trees-dat.csv")
@@ -67,9 +80,10 @@ print(paste("We are using", nrow(trees_train), "observations for training and ",
 
 ```
 
-### Simple Logistic Regression 
+### Simple Logistic Regression
 
-Let's start our modeling effort with some simple models: one predictor and one outcome each.
+Let's start our modeling effort with some simple models: one predictor
+and one outcome each.
 
 > Question 4: Choose the three predictors that most highly correlate with our outcome variable for further investigation.
 
@@ -81,14 +95,26 @@ cormatrix <- cor(trees_encoded)
 corrplot(cormatrix, method = "shade", shade.col = NA, tl.col = "black", tl.srt = 45, addCoef.col = "black", cl.pos = "n", order = "original")
 
 ```
-The three variables most highly correlated with tree survival are:
-CVS_percent: 0.68
-BCHM_m: 0.42
-DBH_cm: -0.32
 
-**CVS_percent** is the percent of the pre-fire crown volume that was scorched or consumed by fire (values 0 to 100). If measured, this is the CVS from field measurements. Otherwise it is the calculated CVS from crown length measurement, where CVS=100[(CLS(2CL_pre - CLS))/CL_pre2].
-**BCHM_m** is maximum bark char (also called bole char, bole scorch in other publications) vertical height from ground on a tree bole, rounded to nearest 0.01 m (m=meters).
-**DBH_cm** is the diameter at breast height rounded to nearest 0.1 cm (cm = centimeters).
+The three variables most highly correlated with tree survival are:
+
+-   CVS_percent: 0.68
+
+-   BCHM_m: 0.42
+
+-   DBH_cm: -0.32
+
+**CVS_percent** is the percent of the pre-fire crown volume that was
+scorched or consumed by fire (values 0 to 100). If measured, this is the
+CVS from field measurements. Otherwise it is the calculated CVS from
+crown length measurement, where CVS=100[(CLS(2CL_pre - CLS))/CL_pre2].
+
+**BCHM_m** is maximum bark char (also called bole char, bole scorch in
+other publications) vertical height from ground on a tree bole, rounded
+to nearest 0.01 m (m=meters).
+
+**DBH_cm** is the diameter at breast height rounded to nearest 0.1 cm
+(cm = centimeters).
 
 > Question 5: Use glm() to fit three simple logistic regression models, one for each of the predictors you identified.
 
@@ -102,10 +128,11 @@ lm_dbh <- glm(yr1status ~ DBH_cm, family = "binomial", data = trees_train)
 
 ```
 
+### Interpret the Coefficients
 
-### Interpret the Coefficients 
-
-We aren't always interested in or able to interpret the model coefficients in a machine learning task. Often predictive accuracy is all we care about.
+We aren't always interested in or able to interpret the model
+coefficients in a machine learning task. Often predictive accuracy is
+all we care about.
 
 > Question 6: That said, take a stab at interpreting our model coefficients now.
 
@@ -114,37 +141,64 @@ We aren't always interested in or able to interpret the model coefficients in a 
 ```{r}
 
 lm_cvs |> 
-  broom::tidy() |> 
-  gt()
+  broom::tidy()
 
-exp(coef(lm_cvs)) #exponentiate coeficients for interpretation 
 ```
 
-For the model that regresses tree survival on the percent of tree crown volume burned provides the generalized formula: 
+For the model that regresses tree survival on the percent of tree crown
+volume burned provides the generalized formula: 
 $$
 \operatorname{logit}(\hat p)=\log \left(\frac{\hat p}{1-\hat p}\right)= -6.61 + 0.0762 x
 $$
-The coeffi
+
+Therefore, the probabilities can be found with the following formula:
+$$
+\frac{\hat p}{1-\hat p}=e^{-6.61+0.0762x}
+$$
+
+To interpret the  $\beta_{0}$ coefficient of 0.0762 and the $\beta_{1}$ coefficient of -6.61, we can calculate the probabilities of tree survival with the equation above. 
+
+```{r}
+
+exp(coef(lm_cvs)) |>  #exponentiate coeficients for interpretation 
+  broom::tidy()
+
+```
+
+The intercept ($\beta_{0}$) coefficient tells us that there is a 0.13% chance that a tree will die in one year when 0% of its crown volume is burned. 
+
+The CVS_percent coefficient ($\beta_{1}$) tells us that for every 1% increase in crown volume burned, the odds of a tree dying within one year increases multiplicatively by 1.07
 
 **Interpreting the bark char height model:**
 
+We can follow the same logical steps as outlined above to interpret the model for bark char.
+
 ```{r}
 lm_bchm |> 
-  broom::tidy() |> 
-  gt()
+  broom::tidy()
 
-exp(coef(lm_bchm)) 
+exp(coef(lm_bchm)) |> 
+  broom::tidy()
+
 ```
+
+The intercept ($\beta_{0}$) coefficient tells us that there is a 13% chance that a tree will die within one year when the maximum height of the bark char is at 0 meters (no bark char).
+
+The BCHM_m coefficient ($\beta_{1}$) tells us that for every 1 meter increase in maximum bar char height, the odds of a tree dying within one year increases multiplicatively by 1.006.
 
 **Interpreting the breast-height diameter**
 
 ```{r}
 lm_dbh |> 
-  broom::tidy() |> 
-  gt()
+  broom::tidy()
 
-exp(coef(lm_dbh))
+exp(coef(lm_dbh)) |> 
+  broom::tidy()
 ```
+
+For the breast-heigth diameter model, the intercept ($\beta_{0}$) coefficient tells us that there is a 148% chance that a tree will die within one year when it's diameter at breast height is 0. If there are trees with a breast-height diameter of 0 (little saplings that are shorter than the measurement) then it makes sense they have a greater likelihood of dying in a fire, but its a less helpful metric to interpret because most trees have some non-zero breast-height diameter. 
+
+The BCHM_m coefficient ($\beta_{1}$) tells us that for every 1 centimeter increase in breast-height diameter, the odds of a tree dying within one year decrease multiplicatively by 0.99. Because the coefficient is less than one, it means the odds of survival are increasing. 
 
 > Question 7: Now let's visualize the results from these models. Plot the fit to the training data of each model.
 
@@ -183,16 +237,15 @@ dbh_plot <- ggplot(data = trees_train,
        y = "One year survival status") +
   theme_minimal()
 
-cvs_plot + bchm_plot + dbh_plot + patchwork::plot_layout(ncol = )
+cvs_plot + bchm_plot + dbh_plot + patchwork::plot_layout(ncol = 3)
 
 ```
-
 
 ### Multiple Logistic Regression
 
 Let's not limit ourselves to a single-predictor model. More predictors might lead to better model performance.
 
-> Question 8: Use glm() to fit a multiple logistic regression called "logistic_full", with all three of the predictors included. Which of these are significant in the resulting model?
+> Question 8: Use glm() to fit a multiple logistic regression called "logistic_full", with all three of the predictors included. Which ofthese are significant in the resulting model?
 
 ```{r}
 
@@ -202,13 +255,15 @@ logistic_full <- glm(
   data = trees_train
 )
 
-tidy(logistic_full)
-logistic_full |>
-  broom::tidy() |>
-  gt()
+#check out significance
+
+logistic_full |> 
+  broom::tidy()
+
 
 ```
 
+The p-values for each predictor in this model are near zero, so all are significant. 
 
 ### Estimate Model Accuracy
 
@@ -217,26 +272,113 @@ Now we want to estimate our model's generalizability using resampling.
 > Question 9: Use cross validation to assess model accuracy. Use caret::train() to fit four 10-fold cross-validated models (cv_model1, cv_model2, cv_model3, cv_model4) that correspond to each of the four models we've fit so far: three simple logistic regression models corresponding to each of the three key predictors (CVS_percent, DBH_cm, BCHM_m) and a multiple logistic regression model that combines all three predictors.
 
 ```{r}
+#make yr1 status a factor
+trees_train$yr1status = as.factor(trees_train$yr1status)
+
+set.seed(123)
+cv_model1_cvs <- train(
+  yr1status ~ CVS_percent,
+  data = trees_train,
+  method = "glm",
+  family = "binomial",
+  trControl = trainControl(method = "cv", number = 10)
+)
+
+set.seed(123)
+cv_model2_bch <- train(
+  yr1status ~ BCHM_m,
+  data = trees_train,
+  method = "glm",
+  family = "binomial",
+  trControl = trainControl(method = "cv", number = 10)
+)
+
+set.seed(123)  
+cv_model3_dbh <- train(
+  yr1status ~ DBH_cm,
+  data = trees_train,
+  method = "glm",
+  family = "binomial",
+  trControl = trainControl(method = "cv", number = 10)
+)
+
+set.seed(123)  
+cv_model4_full <- train(
+  yr1status ~ CVS_percent + BCHM_m + DBH_cm,
+  data = trees_train,
+  method = "glm",
+  family = "binomial",
+  trControl = trainControl(method = "cv", number = 10)
+)
 
 ```
 
-
-
->
 > Question 10: Use caret::resamples() to extract then compare the classification accuracy for each model. (Hint: resamples() wont give you what you need unless you convert the outcome variable to factor form). Which model has the highest accuracy?
+
+```{r}
+
+#create a table comparing accuracies of the models
+summary(
+  resamples(
+    list(
+      model1 = cv_model1_cvs, 
+      model2 = cv_model2_bch, 
+      model3 = cv_model3_dbh,
+      model4 = cv_model4_full
+    )
+  )
+)$statistics$Accuracy
+
+
+```
+Model 4, the multiple logistic regression model, has the highest accuracy across all quantiles. 
 
 Let's move forward with this single most accurate model.
 
 > Question 11: Compute the confusion matrix and overall fraction of correct predictions by the model.
->
-> Question 12: Explain what the confusion matrix is telling you about the types of mistakes made by logistic regression.
->
+
+```{r}
+#predict classes with the model
+pred_death <- predict(cv_model4_full, trees_train)
+
+#show confusion matrix and accuracy
+confusionMatrix(data = relevel(pred_class, ref = 1),
+                reference = relevel(trees_train$yr1status, ref =  1))
+
+
+```
+
+>Question 12: Explain what the confusion matrix is telling you about the types of mistakes made by logistic regression.
+
+0 represents a tree that has survived and 1 represents a tree that has died. So the confusion matrix shows predicted values in the columns, column 1 predicting tree survival and column 2 predicting tree death. The rows show the actual outcomes, row 1 is tree survival and row 2 is tree death. 
+
+Therefore, the model accurately predicted tree survival for 16504 of the observations across resamples, and accurately predicted tree death for 6300 of the observations across resamples. The model falsely predicted death for 847 observations (false positive) and falsely predicted survival (false negative) for 1595 observations. 
+
 > Question 13: What is the overall accuracy of the model? How is this calculated?
+
+The overall accuracy of the model is 90.33%. This is calculated based on how much better the model is than using the majority class classifier (i.e. predicingting tree survival for all observatons). According to the documentation for `caret::confusionMatrix`, a 95% confidence interval and a one-sided test statistic is used to compute accuracy. 
 
 ### Test Final Model
 
-Alright, now we'll take our most accurate model and make predictions on some unseen data (the test data).
+Alright, now we'll take our most accurate model and make predictions on
+some unseen data (the test data).
 
 > Question 14: Now that we have identified our best model, evaluate it by running a prediction on the test data, trees_test.
->
+
+```{r}
+#make test data yr1status a factor
+trees_test$yr1status = as.factor(trees_test$yr1status)
+
+#predict classes with the test data
+pred_test <- predict(cv_model4_full, trees_test)
+
+#assess the accuracy with the test predictions
+#show confusion matrix and accuracy
+confusionMatrix(data = relevel(pred_test, ref = 1),
+                reference = relevel(trees_test$yr1status, ref =  1))
+
+```
+
 > Question 15: How does the accuracy of this final model on the test data compare to its cross validation accuracy? Do you find this to be surprising? Why or why not?
+
+The model preformed similarly on the test data as it did to the cross-validated training data, 89.99% overall accuracy compaared to 90.33% overall accuracy. This makes sense because our training data set was more extensive and therefore gave the model a good representation of observations. 
