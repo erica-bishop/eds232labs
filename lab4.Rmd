@@ -2,7 +2,9 @@
 title: "Lab 4"
 author: "Erica Bishop"
 date: "`r Sys.Date()`"
-output: pdf_document
+output: 
+  pdf_document:
+    latex_engine: xelatex
 editor_options: 
   markdown: 
     wrap: 72
@@ -22,22 +24,15 @@ library(patchwork)
 
 ## Lab 4: Fire and Tree Mortality
 
-The database we'll be working with today includes 36066 observations of
-individual trees involved in prescribed fires and wildfires occurring
-over 35 years, from 1981 to 2016. It is a subset of a larger fire and
-tree mortality database from the US Forest Service (see data description
-for the full database here:
-[link](https://www.nature.com/articles/s41597-020-0522-7#Sec10)). Our
-goal today is to predict the likelihood of tree mortality after a fire.
+The database we'll be working with today includes 36066 observations of individual trees involved in prescribed fires and wildfires occurring over 35 years, from 1981 to 2016. It is a subset of a larger fire and tree mortality database from the US Forest Service (see data description for the full database here:
+[link](https://www.nature.com/articles/s41597-020-0522-7#Sec10)). Our goal today is to predict the likelihood of tree mortality after a fire.
 
 ### Data Exploration
 
 Outcome variable: *yr1status* = tree status (0=alive, 1=dead) assessed
 one year post-fire.
 
-Predictors: *YrFireName, Species, Genus_species, DBH_cm, CVS_percent,
-BCHM_m, BTL* (Information on these variables available in the database
-metadata
+Predictors: *YrFireName, Species, Genus_species, DBH_cm, CVS_percent, BCHM_m, BTL* (Information on these variables available in the database metadata
 ([link](https://www.fs.usda.gov/rds/archive/products/RDS-2020-0001-2/_metadata_RDS-2020-0001-2.html))).
 
 ```{r}
@@ -82,8 +77,7 @@ print(paste("We are using", nrow(trees_train), "observations for training and ",
 
 ### Simple Logistic Regression
 
-Let's start our modeling effort with some simple models: one predictor
-and one outcome each.
+Let's start our modeling effort with some simple models: one predictor and one outcome each.
 
 > Question 4: Choose the three predictors that most highly correlate with our outcome variable for further investigation.
 
@@ -104,17 +98,11 @@ The three variables most highly correlated with tree survival are:
 
 -   DBH_cm: -0.32
 
-**CVS_percent** is the percent of the pre-fire crown volume that was
-scorched or consumed by fire (values 0 to 100). If measured, this is the
-CVS from field measurements. Otherwise it is the calculated CVS from
-crown length measurement, where CVS=100[(CLS(2CL_pre - CLS))/CL_pre2].
+**CVS_percent** is the percent of the pre-fire crown volume that was scorched or consumed by fire (values 0 to 100). If measured, this is the CVS from field measurements. Otherwise it is the calculated CVS from crown length measurement, where CVS=100[(CLS(2CL_pre - CLS))/CL_pre2].
 
-**BCHM_m** is maximum bark char (also called bole char, bole scorch in
-other publications) vertical height from ground on a tree bole, rounded
-to nearest 0.01 m (m=meters).
+**BCHM_m** is maximum bark char (also called bole char, bole scorch in other publications) vertical height from ground on a tree bole, rounded to nearest 0.01 m (m=meters).
 
-**DBH_cm** is the diameter at breast height rounded to nearest 0.1 cm
-(cm = centimeters).
+**DBH_cm** is the diameter at breast height rounded to nearest 0.1 cm (cm = centimeters).
 
 > Question 5: Use glm() to fit three simple logistic regression models, one for each of the predictors you identified.
 
@@ -130,9 +118,7 @@ lm_dbh <- glm(yr1status ~ DBH_cm, family = "binomial", data = trees_train)
 
 ### Interpret the Coefficients
 
-We aren't always interested in or able to interpret the model
-coefficients in a machine learning task. Often predictive accuracy is
-all we care about.
+We aren't always interested in or able to interpret the model coefficients in a machine learning task. Often predictive accuracy is all we care about.
 
 > Question 6: That said, take a stab at interpreting our model coefficients now.
 
@@ -145,8 +131,7 @@ lm_cvs |>
 
 ```
 
-For the model that regresses tree survival on the percent of tree crown
-volume burned provides the generalized formula: 
+For the model that regresses tree survival on the percent of tree crown volume burned provides the generalized formula: 
 $$
 \operatorname{logit}(\hat p)=\log \left(\frac{\hat p}{1-\hat p}\right)= -6.61 + 0.0762 x
 $$
@@ -155,7 +140,6 @@ Therefore, the probabilities can be found with the following formula:
 $$
 \frac{\hat p}{1-\hat p}=e^{-6.61+0.0762x}
 $$
-
 To interpret the  $\beta_{0}$ coefficient of 0.0762 and the $\beta_{1}$ coefficient of -6.61, we can calculate the probabilities of tree survival with the equation above. 
 
 ```{r}
@@ -342,7 +326,7 @@ Let's move forward with this single most accurate model.
 pred_death <- predict(cv_model4_full, trees_train)
 
 #show confusion matrix and accuracy
-confusionMatrix(data = relevel(pred_class, ref = 1),
+confusionMatrix(data = relevel(pred_death, ref = 1),
                 reference = relevel(trees_train$yr1status, ref =  1))
 
 
@@ -381,4 +365,4 @@ confusionMatrix(data = relevel(pred_test, ref = 1),
 
 > Question 15: How does the accuracy of this final model on the test data compare to its cross validation accuracy? Do you find this to be surprising? Why or why not?
 
-The model preformed similarly on the test data as it did to the cross-validated training data, 89.99% overall accuracy compaared to 90.33% overall accuracy. This makes sense because our training data set was more extensive and therefore gave the model a good representation of observations. 
+The model preformed similarly on the test data as it did to the cross-validated training data, 89.99% overall accuracy compaared to 90.33% overall accuracy. This makes sense because our training data set was more extensive and therefore gave the model a good representation of observations. Both models are statistically significant, and fall within the same 95% confidence interval. 
