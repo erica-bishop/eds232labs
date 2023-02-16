@@ -1,8 +1,8 @@
 ---
-title: "Lab5"
-author: "Your Name"
+title: "Lab 5 - part 1"
+author: "Erica Bishop"
 date: "2023-02-07"
-output: html_document
+output: pdf_document
 ---
 
 This week's lab is a musical lab. You'll be requesting data from the Spotify API and using it to build k-nearest neighbor and decision tree models.
@@ -37,6 +37,15 @@ access_token \<- get_spotify_access_token() #takes ID and SECRET, sends to Spoti
 >
 > *This can be resolved by editing the callback settings on your app. Go to your app and click "Edit Settings". Under redirect URLs paste this: <http://localhost:1410/> and click save at the bottom.*
 
+```{r}
+Sys.setenv(SPOTIFY_CLIENT_ID = '5cff8a26d7c940f5b487a4e97b821719')
+Sys.setenv(SPOTIFY_CLIENT_SECRET = '8aae2adeb7554dbda232376f08329505')
+
+access_token <- get_spotify_access_token(client_id = Sys.getenv("SPOTIFY_CLIENT_ID"),
+                                         client_secret = Sys.getenv("SPOTIFY_CLIENT_SECRET"))
+
+```
+
 **Option 1: Data Preparation**
 
 You can use get_my_saved_tracks() to request all your liked tracks. It would be good if you had at least 150-200 liked tracks so the model has enough data to work with. If you don't have enough liked tracks, you can instead use get_my_recently_played(), and in that case grab at least 500 recently played tracks if you can.
@@ -54,6 +63,29 @@ Find a class mate whose data you would like to use. Add your partner's data to y
 Download the Spotify dataset from <https://www.kaggle.com/datasets/mrmorj/dataset-of-songs-in-spotify>
 
 Inspect the data. Choose two genres you'd like to use for the classification task. Filter down the data to include only the tracks of that genre.
+
+```{r}
+#Get saved track list
+offsets_list <- c(seq(0, 2900, 50)) #create list from 0 to 900 to get top 900 saved tracks
+
+saved_tracks_eb <- lapply(X = offsets_list,
+                           FUN = get_my_saved_tracks, 
+                           limit = 50
+                           ) |> #produce list of dfs for each call of 50
+  bind_rows() #bind lists into one df
+
+#Get saved track attributes
+
+track_id_list <- saved_tracks_eb[["track.id"]] #create list of track ids
+
+track_attributes_eb <- lapply(X = track_id_list,
+                              FUN = get_track_audio_features) |> 
+  bind_rows()
+
+
+```
+
+
 
 ##Data Exploration (both options)
 
