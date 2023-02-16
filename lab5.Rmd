@@ -1,6 +1,6 @@
 ---
 title: "Lab 5 - part 1"
-author: "Erica Bishop"
+author: "Erica Bishop (and Jillian Allison)"
 date: "2023-02-07"
 output: pdf_document
 ---
@@ -23,6 +23,7 @@ You have two options for completing this lab.
 library(spotifyr) #API interaction
 library(tidyverse)
 library(tidymodels)
+library(here)
 ```
 
 Client ID and Client Secret are required to create and access token that is required to interact with the API. You can set them as system values so we don't have to do provide them each time.
@@ -39,7 +40,7 @@ access_token \<- get_spotify_access_token() #takes ID and SECRET, sends to Spoti
 
 ```{r}
 Sys.setenv(SPOTIFY_CLIENT_ID = '5cff8a26d7c940f5b487a4e97b821719')
-Sys.setenv(SPOTIFY_CLIENT_SECRET = '8aae2adeb7554dbda232376f08329505')
+Sys.setenv(SPOTIFY_CLIENT_SECRET = '851d5f1aa804476d8d1ba291a3183a2e')
 
 access_token <- get_spotify_access_token(client_id = Sys.getenv("SPOTIFY_CLIENT_ID"),
                                          client_secret = Sys.getenv("SPOTIFY_CLIENT_SECRET"))
@@ -66,7 +67,7 @@ Inspect the data. Choose two genres you'd like to use for the classification tas
 
 ```{r}
 #Get saved track list
-offsets_list <- c(seq(0, 2900, 50)) #create list from 0 to 900 to get top 900 saved tracks
+offsets_list <- c(seq(0, 2900, 50)) #create list to get saved songs
 
 saved_tracks_eb <- lapply(X = offsets_list,
                            FUN = get_my_saved_tracks, 
@@ -76,11 +77,23 @@ saved_tracks_eb <- lapply(X = offsets_list,
 
 #Get saved track attributes
 
-track_id_list <- saved_tracks_eb[["track.id"]] #create list of track ids
+track_id_list <- saved_tracks_eb$track.id #create list of track ids
 
 track_attributes_eb <- lapply(X = track_id_list,
                               FUN = get_track_audio_features) |> 
   bind_rows()
+
+
+#now append track list name to the track attributes df
+
+saved_track_names <- saved_tracks_eb |> 
+  select(track.name, track.id) |> #select out just track name and id
+  rename(id = track.id) #rename id column to join
+
+eb_tracks_df <- left_join(track_attributes_eb, saved_track_names, by = "id") #join df
+
+#save dataframe as a csv to send to Jillian
+write_csv(eb_tracks_df, here("eb_track_attributes.csv"))
 
 
 ```
@@ -92,6 +105,20 @@ track_attributes_eb <- lapply(X = track_id_list,
 Let's take a look at your data. Do some exploratory summary stats and visualization.
 
 For example: What are the most danceable tracks in your dataset? What are some differences in the data between users (Option 1) or genres (Option 2)?
+
+```{r}
+
+
+
+```
+
+```{r}
+#Differences between me and Jillian's data
+
+
+```
+
+
 
 ### **Modeling**
 
