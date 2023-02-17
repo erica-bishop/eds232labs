@@ -24,6 +24,8 @@ library(spotifyr) #API interaction
 library(tidyverse)
 library(tidymodels)
 library(here)
+library(tune)
+
 ```
 
 Client ID and Client Secret are required to create and access token that is required to interact with the API. You can set them as system values so we don't have to do provide them each time.
@@ -92,13 +94,18 @@ saved_track_names <- saved_tracks_eb |>
 
 eb_tracks_df <- left_join(track_attributes_eb, saved_track_names, by = "id") #join df
 
+#add user column
+eb_tracks_df <- eb_tracks_df |> 
+  add_column(user = "Erica")
+
+
 #save dataframe as a csv to send to Jillian
 write_csv(eb_tracks_df, here("eb_track_attributes.csv"))
 
 #read in Jillian's data
 ja_tracks_df <- read_csv(here("jillian_spotify_data.csv")) |> 
   select(-track_id) |> #drop track_id column (repeats id column)
-  #renametrack_name to match
+  rename(track.name = track_name)#renametrack_name to match
 
 
 ```
@@ -120,29 +127,47 @@ names(eb_tracks_df)
 names(ja_tracks_df)
 
 #do we have any of the same tracks saved??
-eb_ja_shared_faves <- semi_join(eb_tracks_df, ja_tracks_df) #use semi_join to get df of tracks in common
+eb_ja_shared_faves <- semi_join(eb_tracks_df, ja_tracks_df, by = "id") #use semi_join to get df of tracks in common
 #looks like a lot of beyonce, frank ocean, and lady gaga, but let's take a closer look!
 
 #what are the characteristics of our shared tracks?
 eb_ja_summary <- eb_ja_shared_faves |> 
   select(danceability, energy, key, valence, loudness, speechiness, acousticness) |> 
   summarise_all(mean) |> #calculate the average of some variables of interest
-  add_column() #add id column
+  add_column(user = "both <3") #update user column to show both of us
 
 #compare the characteristics of shared tracks to just mine
 eb_summary <- eb_tracks_df |> 
   select(danceability, energy, key, valence, loudness, speechiness, acousticness) |> 
-  summarise_all(mean)
+  summarise_all(mean) |> 
+  add_column(user = "Erica")
 
 #calculate same summary table for jillian
 ja_summary <- ja_tracks_df |> 
   select(danceability, energy, key, valence, loudness, speechiness, acousticness) |> 
-  summarise_all(mean)
+  summarise_all(mean) |> 
+  add_column(user = "Jillian")
 
-#combine the summary stats tables into one df for easy plotting
+#combine the summary stats tables into one df 
+summary_df <- rbind(eb_ja_summary, eb_summary, ja_summary)
 
+```
+```{r}
 
+#combine both data sets
 
+eb_ja_tracks <- full_join(eb_tracks_df,
+                          ja_tracks_df,
+                          by = c("danceability", "energy", "key", "loudness", "mode", "speechiness", "acousticness", "instrumentalness", "liveness", "valence", "tempo", "type", "id", "uri", "track_href", "analysis_url", "duration_ms", "time_signature", "track.name")) |> 
+  mutate(user = case_when( 
+    user.y == "Jillian" & user.x == "Erica" ~ "Both", #relabel songs in both user lists with case_when
+    user.y == "Jillian" & is.na(user.x) ~ "Jillian",
+    TRUE ~ "Erica"
+  )) |>  #drop individual user columns and a few other less useful predictors
+  select(-c(user.x, user.y, uri, track_href, analysis_url, type))
+
+#save output df as a csv (in case api causes issues again)
+write_csv(eb_ja_tracks, here("eb_ja_tracks.csv"))
 
 ```
 
@@ -167,15 +192,210 @@ ja_summary <- ja_tracks_df |>
 ```
 
 
-
 ### **Modeling**
+#Now with an added random forest component and some clarification your task.
 
-Create two models, a k-nearest neighbor model and a decision tree model that predict whether a track belongs to:
+Create competing models that predict whether a track belongs to:
 
-1.  you or your partner's collection
+**Option 1.  you or your partner's collection**
 
-2.  genre 1 or genre 2
+Option 2.  genre 1 or genre 2
 
-Then validate and compare the performance of the two models you have created.
+Create three final candidate models:
 
-Make sure to use appropriate resampling to select the best version of each algorithm to compare and some appropriate visualization of your results.
+1. k-nearest neighbor 
+2. decision tree
+3. bagged tree
+    - bag_tree()
+    - Use the "times =" argument when setting the engine during model specification to specify the number of         trees. The rule of thumb is that 50-500 trees is usually sufficient.  The bottom of that range should          be sufficient here.  
+4. random forest
+    - rand_forest()
+    - m_try() is the new hyperparameter of interest for this type of model.  Make sure to include it in your         tuning process
+
+Go through the modeling process for each model:
+
+Preprocessing. You can use the same recipe for all the models you create. 
+
+Resampling. Make sure to use appropriate resampling to select the best version created by each algorithm.
+
+Tuning. Find the best values for each hyperparameter (within a reasonable range).
+
+Compare the performance of the four final models you have created.  
+
+Use appropriate performance evaluation metric(s) for this classification task. A table would be a good way to display your comparison.  Use at least one visualization illustrating your model results.
+
+## Pre-Processing
+Splitting the data and encoding - this pre-processed data will be used in each of the four models below.
+
+```{r preprocessing}
+#remove unique identifiers from dataset (track id and song name)
+tracks_df <- eb_ja_tracks |> 
+  select(-c(id, track.name))
+
+#split the data FIRST
+set.seed(123) #set seed
+
+tracks_split <- initial_split(tracks_df) #split
+tracks_train <- training(tracks_split) #training dataset
+tracks_test <- testing(tracks_split) #testing dataset
+
+#Preprocess the data - encoding with the recipe
+tracks_recipe <- recipe(user ~., data = tracks_train) |> 
+  step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE) |> #one hot encoding of nominal variables (- user)
+  step_normalize(all_numeric(), -all_outcomes()) |> #normalize scale of numeric variables 
+  prep()
+
+#bake training data
+baked_tracks <- bake(tracks_recipe, tracks_train)
+
+#bake testing data too - for later ;)
+baked_test_tracks <- bake(tracks_recipe, tracks_test)
+
+```
+
+## KNN Model
+
+```{r knn_model}
+
+#set engine and specifications for KNN model
+knn_spec <- nearest_neighbor() |> 
+  set_engine("kknn") |> #specify how with engine
+  set_mode("classification") #specify classificaton
+
+```
+
+```{r knn_resample_tune}
+
+#resample
+set.seed(123)
+cv_folds <-tracks_train |> 
+  vfold_cv() #10 folds is default
+
+#fit resamples and tuning grid to workflow
+knn_tuned_wf <- workflow() |> 
+  add_model(knn_spec) |> 
+  add_recipe(tracks_recipe) |> 
+  fit_resamples(
+    resamples = cv_folds,
+    control = control_resamples(save_pred = TRUE)
+  ) |>
+  tune_grid(
+    cv_folds,
+    grid = data.frame(neighbors = c(1, 5, seq(10, 100, 10))) #test k values up to 100 by 10s
+  )
+ 
+#check out the wf
+knn_final_wf
+
+```
+
+```{r knn_metrics}
+
+# Check the performance with collect_metrics()
+fit_knn_cv %>% collect_metrics()
+
+#table of metrics
+
+#at least one visual of results
+
+```
+
+## Decision Tree
+
+
+```{r dtree_model}
+
+
+
+```
+
+```{r dtree_resample}
+
+```
+
+```{r dtree_tune}
+
+```
+
+```{r dtree_metrics}
+
+#table of metrics
+
+#at least one visual of results
+
+```
+
+
+## Bagged Tree
+
+```{r bagg_model}
+
+
+
+```
+
+```{r bagg_resample}
+
+
+
+```
+
+```{r bagg_tune}
+
+
+
+```
+
+```{r bagg_metrics}
+
+#table of metrics
+
+#at least one visual of results
+
+```
+
+## Random Forest
+
+```{r rf_model}
+
+
+
+
+```
+
+```{r rf_resample}
+
+
+
+```
+
+```{r rf_tune}
+
+
+
+
+```
+
+```{r rf_metrics}
+
+#table of metrics
+
+#at least one visual of results
+
+
+```
+
+
+## Comparing the models
+```{r model_metrics}
+
+#table of metrics
+
+#at least one visual of results
+
+```
+
+
+
+
+
