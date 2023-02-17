@@ -95,10 +95,13 @@ eb_tracks_df <- left_join(track_attributes_eb, saved_track_names, by = "id") #jo
 #save dataframe as a csv to send to Jillian
 write_csv(eb_tracks_df, here("eb_track_attributes.csv"))
 
+#read in Jillian's data
+ja_tracks_df <- read_csv(here("jillian_spotify_data.csv")) |> 
+  select(-track_id) |> #drop track_id column (repeats id column)
+  #renametrack_name to match
+
 
 ```
-
-
 
 ##Data Exploration (both options)
 
@@ -108,13 +111,58 @@ For example: What are the most danceable tracks in your dataset? What are some d
 
 ```{r}
 
+#skim both datasets
+skimr::skim(eb_tracks_df)
+skimr::skim(ja_tracks_df)
+
+#take a closer look at some variables
+names(eb_tracks_df)
+names(ja_tracks_df)
+
+#do we have any of the same tracks saved??
+eb_ja_shared_faves <- semi_join(eb_tracks_df, ja_tracks_df) #use semi_join to get df of tracks in common
+#looks like a lot of beyonce, frank ocean, and lady gaga, but let's take a closer look!
+
+#what are the characteristics of our shared tracks?
+eb_ja_summary <- eb_ja_shared_faves |> 
+  select(danceability, energy, key, valence, loudness, speechiness, acousticness) |> 
+  summarise_all(mean) |> #calculate the average of some variables of interest
+  add_column() #add id column
+
+#compare the characteristics of shared tracks to just mine
+eb_summary <- eb_tracks_df |> 
+  select(danceability, energy, key, valence, loudness, speechiness, acousticness) |> 
+  summarise_all(mean)
+
+#calculate same summary table for jillian
+ja_summary <- ja_tracks_df |> 
+  select(danceability, energy, key, valence, loudness, speechiness, acousticness) |> 
+  summarise_all(mean)
+
+#combine the summary stats tables into one df for easy plotting
+
+
 
 
 ```
 
-```{r}
-#Differences between me and Jillian's data
 
+```{r}
+### compare the spread of some key variables 
+
+#compare danceability
+
+
+#compare energy
+
+
+#compare key
+
+
+#compare valence
+
+
+#compare type
 
 ```
 
