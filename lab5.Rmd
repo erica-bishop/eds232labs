@@ -176,21 +176,58 @@ write_csv(eb_ja_tracks, here("eb_ja_tracks.csv"))
 ### compare the spread of some key variables 
 
 #compare danceability
-
+dance_plot <- ggplot(data = eb_ja_tracks,
+       aes(y = danceability,
+           x = user,
+           col = user)) +
+  geom_boxplot() +
+  labs(title = "Daceability")
 
 #compare energy
-
+energy_plot <- ggplot(data = eb_ja_tracks,
+       aes(y = energy,
+           x = user,
+           col = user)) +
+  geom_boxplot() +
+  labs(title = "Energy")
 
 #compare key
-
+key_plot <- ggplot(data = eb_ja_tracks,
+       aes(y = key,
+           x = user,
+           col = user)) +
+  geom_boxplot() +
+  labs(title = "Key")
 
 #compare valence
+valence_plot <- ggplot(data = eb_ja_tracks,
+       aes(y = valence,
+           x = user,
+           col = user)) +
+  geom_boxplot() +
+  labs(title = "Valence")
 
+#compare tempo
+tempo_plot <- ggplot(data = eb_ja_tracks,
+       aes(y = tempo,
+           x = user,
+           col = user)) +
+  geom_boxplot() +
+  labs(title = "Tempo")
 
-#compare type
+#compare mode
+
+mode_plot <- ggplot(data = eb_ja_tracks,
+       aes(y = loudness,
+           x = user,
+           col = user)) +
+  geom_boxplot() +
+  labs(title = "Loudness")
+
+dance_plot + energy_plot + key_plot + valence_plot + tempo_plot + mode_plot
 
 ```
-
+Based on how similar these variables are across Jillian and me, it could be very tough for the models to correctly classify tracks - but we'll see!
 
 ### **Modeling**
 #Now with an added random forest component and some clarification your task.
@@ -230,7 +267,8 @@ Splitting the data and encoding - this pre-processed data will be used in each o
 ```{r preprocessing}
 #remove unique identifiers from dataset (track id and song name)
 tracks_df <- eb_ja_tracks |> 
-  select(-c(id, track.name))
+  select(-c(id, track.name)) |> 
+  mutate(user = as.factor(user)) #make outcome variable a factor
 
 #split the data FIRST
 set.seed(123) #set seed
@@ -262,32 +300,55 @@ knn_spec <- nearest_neighbor() |>
   set_engine("kknn") |> #specify how with engine
   set_mode("classification") #specify classificaton
 
+#fit a simple model without tuning - what happens?
+#what happens when you just fit this model?
+knn_fit <- knn_spec %>% 
+  fit(user ~. , data = tracks_train)
+
+knn_fit
+
 ```
 
 ```{r knn_resample_tune}
 
 #resample
+## This resampling can be used for all of the models below!
 set.seed(123)
 cv_folds <-tracks_train |> 
   vfold_cv() #10 folds is default
 
-#fit resamples and tuning grid to workflow
-knn_tuned_wf <- workflow() |> 
+#create a workflow to tune
+knn_workflow <- workflow() |> 
   add_model(knn_spec) |> 
-  add_recipe(tracks_recipe) |> 
+  add_recipe(tracks_recipe)
+
+
+#fit resamples and tuning grid to workflow
+knn_rs_wf <- workflow() |> 
+  add_model(knn_spec) |> #add specification defined above
+  add_recipe(tracks_recipe) |> #add recipe
   fit_resamples(
-    resamples = cv_folds,
+    resamples = cv_folds, #fit to resampled data
     control = control_resamples(save_pred = TRUE)
-  ) |>
-  tune_grid(
-    cv_folds,
-    grid = data.frame(neighbors = c(1, 5, seq(10, 100, 10))) #test k values up to 100 by 10s
-  )
+  ) 
+
+
+
+#|>
+  # tune_grid( 
+  #   cv_folds,
+  #   grid = data.frame(neighbors = c(1, 5, seq(10, 100, 10))) #test k values up to 100 by 10s
+  # )
  
 #check out the wf
 knn_final_wf
 
 ```
+
+```{r}
+knn_rs_wf |> collect_metrics()
+```
+
 
 ```{r knn_metrics}
 
@@ -305,17 +366,62 @@ fit_knn_cv %>% collect_metrics()
 
 ```{r dtree_model}
 
+#starting with a fixed specification model
+tree_spec_fixed <- decision_tree(
+  cost_complexity = 0.1,
+  tree_depth = 4,
+  min_n = 11, #min node size for splits
+) |> 
+  set_engine("rpart") |> 
+  set_mode("classification")
+
+
+
+```
+
+
+```{r dtree_tune}
+
+#create a model with with tuning specifications
+tree_spec_tune <- decision_tree(
+  cost_complexity = tune(),
+  tree_depth = tune(),
+  min_n = tune()
+) |> 
+  set_engine("rpart") |> 
+  set_mode("classification")
+
+#test out some hyperparameters
+tree_grid <- grid_regular(cost_complexity(), tree_depth(),
+                          min_n(),
+                          levels = 5) #try 5 levels for hyperparameters (so 125 total outcomes)
+
+tree_grid
+
 
 
 ```
 
 ```{r dtree_resample}
 
+#use resampling folds (speciifed above) to build trees in parallel
+
+doParallel::registerDoParallel() #build trees in parallel
+#200s
+tree_rs <- tune_grid(
+  tree_spec_tune,
+  user~.,
+  resamples = cv_folds,
+  grid = tree_grid,
+  metrics = metric_set(accuracy)
+)
+
+tree_rs
+
+
+
 ```
 
-```{r dtree_tune}
-
-```
 
 ```{r dtree_metrics}
 
