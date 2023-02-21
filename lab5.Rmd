@@ -42,8 +42,6 @@ access_token \<- get_spotify_access_token() #takes ID and SECRET, sends to Spoti
 > *This can be resolved by editing the callback settings on your app. Go to your app and click "Edit Settings". Under redirect URLs paste this: <http://localhost:1410/> and click save at the bottom.*
 
 ```{r}
-Sys.setenv(SPOTIFY_CLIENT_ID = '5cff8a26d7c940f5b487a4e97b821719')
-Sys.setenv(SPOTIFY_CLIENT_SECRET = '851d5f1aa804476d8d1ba291a3183a2e')
 
 access_token <- get_spotify_access_token(client_id = Sys.getenv("SPOTIFY_CLIENT_ID"),
                                          client_secret = Sys.getenv("SPOTIFY_CLIENT_SECRET"))
@@ -152,7 +150,11 @@ ja_summary <- ja_tracks_df |>
 #combine the summary stats tables into one df 
 summary_df <- rbind(eb_ja_summary, eb_summary, ja_summary)
 
+stargazer::stargazer(summarydf)
+
 ```
+
+
 ```{r}
 
 #combine both data sets
