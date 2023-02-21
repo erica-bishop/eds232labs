@@ -327,8 +327,8 @@ final_knn_wf <-
 final_knn_fit <- final_knn_wf |> 
   last_fit(tracks_split) 
 
-# Collect metrics on the test data!
-final_knn_fit |> collect_metrics()
+# Collect metrics
+knn_metrics <- final_knn_fit |> collect_metrics()
 
 ```
 
@@ -345,10 +345,10 @@ tree_spec_tune <- decision_tree(
   set_engine("rpart") |> 
   set_mode("classification")
 
-#test out some hyperparameters
+#test out some hyperparameters in a search grid
 tree_grid <- grid_regular(cost_complexity(), tree_depth(),
                           min_n(),
-                          levels = 5) #try 5 levels for hyperparameters (so 125 total outcomes)
+                          levels = 3) #27 total outcomes to try
 
 tree_grid
 
@@ -400,6 +400,7 @@ final_tree_fit <- last_fit(final_tree,
 
 final_tree_fit$.predictions
 
+tree_metrics <- collect_metrics(final_tree_fit)
 
 ```
 
@@ -407,9 +408,7 @@ final_tree_fit$.predictions
 
 ```{r bagg_model}
 
-#specify model with tuning parameters
-
-#try with no tuning just to see? - this worked
+#specify model without tuning parameters (using defaults)
 bag_spec <- bag_tree() |> 
   set_engine("rpart", times = 50) |> 
   set_mode("classification")
@@ -453,7 +452,6 @@ bag_rs <- tune_grid(
 )
 
 
-
 ```
 
 
@@ -477,7 +475,6 @@ mtry() |>
 range_set(c(1, ncol(tracks_train) - 1))
 
 
-
 #specify model for tuning
 rand_spec_tune <- rand_forest(
   mtry = tune(),
@@ -487,7 +484,13 @@ rand_spec_tune <- rand_forest(
   set_engine("ranger") |> 
   set_mode("classification")
 
-
+#create hyper parameter search grid for tuning
+set.seed(123)
+forest_grid <- grid_regular(
+  mtry(c(1, 4, 6)), #manually specify values for mtry
+  trees(),
+  levels = 3 #just trying three levels
+)
 
 #bundle into a workflow and fit resamples
 wf_randf <- workflow() |> 
@@ -496,13 +499,7 @@ wf_randf <- workflow() |>
   fit_resamples(vc_folds)
 
 
-#create hyper parameter search grid for tuning
-set.seed(123)
-forest_grid <- grid_regular(
-  mtry(c(1, 4, 6)), #manually specify values for mtry
-  trees(),
-  levels = 3 #just trying three levels
-)
+
 
 ```
 
@@ -532,7 +529,16 @@ forest_grid <- grid_regular(
 ## Comparing the models
 ```{r model_metrics}
 
+#compare metrics
+knn_metrics
+
+tree_metrics
+
 #table of metrics
+
+
+
+
 
 #at least one visual of results for each model
 
