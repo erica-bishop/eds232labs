@@ -308,7 +308,7 @@ cv_folds <-tracks_train |>
 
 ```{r knn_wf}
 #specify model
-knn_spec <- nearest_neighbor(neighbors = tune()) |> #use tune to find optimal number of neighbors
+knn_spec <- nearest_neighbor() |> #use defaults for first specification
   set_engine("kknn") |> 
   set_mode("classification") 
 
@@ -320,7 +320,7 @@ knn_workflow <- workflow() |>
 
 ```
 
-```{r knn_rs}
+```{r knn_tune}
 
 #fit resamples to the workflow
 knn_res <- 
@@ -330,35 +330,40 @@ knn_res <-
     control = control_resamples(save_pred = TRUE) #save prediction
     )
 
+# Now define our KNN model with tuning
+knn_spec_tune <- 
+  nearest_neighbor(neighbors = tune()) |>  #now specify how many neighbors - use tune to look for best
+  set_mode("classification") |> 
+  set_engine("kknn")
 
+# Define a new workflow
+wf_knn_tune <- workflow() |> 
+  add_model(knn_spec_tune) |> 
+  add_recipe(tracks_recipe) 
 
-```
-
-```{r knn_tune}
-# Fit the tuned and resampled workflow on our predefined folds and hyperparameters
+# Fit the workflow on our predefined folds and hyperparameters
 fit_knn_cv <- wf_knn_tune |> 
   tune_grid( 
     cv_folds,
     grid = data.frame(neighbors = c(1, 5, seq(10,100,10)))) 
 
-
-
-
-```
-
-```{r}
-knn_rs_wf |> collect_metrics()
 ```
 
 
 ```{r knn_metrics}
 
-# Check the performance with collect_metrics()
-fit_knn_cv %>% collect_metrics()
+# The final workflow for our KNN model
+final_knn_wf <- 
+  knn_workflow |> 
+  finalize_workflow(select_best(fit_knn_cv))
 
-#table of metrics
 
-#at least one visual of results
+# # Fitting our final workflow
+final_knn_fit <- final_knn_wf |> 
+  last_fit(tracks_split) 
+
+# Collect metrics on the test data!
+final_knn_fit |> collect_metrics()
 
 ```
 
@@ -433,19 +438,24 @@ final_tree_fit$.predictions
 
 ```
 
-
 ## Bagged Tree
 
 ```{r bagg_model}
 
 #specify model with tuning parameters
-set.seed(123)
-bag_spec <- bag_tree(
+
+#try with no tuning just to see? - this worked
+bag_spec <- bag_tree() |> 
+  set_engine("rpart", times = 50) |> 
+  set_mode("classification")
+
+#with tuning = takes 5ever
+bag_spec_tune <- bag_tree(
   cost_complexity = tune(),
   tree_depth = tune(),
   min_n = tune()
 ) |> 
-  set_engine("rpart", times = 100) |> 
+  set_engine("rpart", times = 50) |> 
   set_mode("classification")
 
 #create hyperparameter search grid
@@ -492,10 +502,16 @@ rand_spec <- rand_forest(
   trees = 500, #using default number
   min_n = 10 #default
 ) |> 
-  set_engine("ranger") |> #based on google ranger seems like a good engine to use for parallelization?
+  set_engine("ranger") |> 
   set_mode("classification")
 
 #might need to install the butcher package
+
+#specify a range for mtry
+mtry() |> 
+range_set(c(1, ncol(tracks_train) - 1))
+
+
 
 #specify model for tuning
 rand_spec_tune <- rand_forest(
@@ -507,12 +523,21 @@ rand_spec_tune <- rand_forest(
   set_mode("classification")
 
 
+
 #bundle into a workflow and fit resamples
 wf_randf <- workflow() |> 
   add_recipe(tracks_recipe) |> 
   add_model(rand_spec_tune) |> 
   fit_resamples(vc_folds)
 
+
+#create hyper parameter search grid for tuning
+set.seed(123)
+forest_grid <- grid_regular(
+  mtry(c(1, 4, 6)), #manually specify values for mtry
+  trees(),
+  levels = 3 #just trying three levels
+)
 
 ```
 
