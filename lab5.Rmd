@@ -23,7 +23,9 @@ You have two options for completing this lab.
 library(spotifyr) #API interaction
 library(tidyverse)
 library(tidymodels)
+library(gt)
 library(here)
+library(patchwork)
 library(tune)
 library(baguette)
 
@@ -40,13 +42,6 @@ access_token \<- get_spotify_access_token() #takes ID and SECRET, sends to Spoti
 > INVALID_CLIENT: Invalid redirect URI
 >
 > *This can be resolved by editing the callback settings on your app. Go to your app and click "Edit Settings". Under redirect URLs paste this: <http://localhost:1410/> and click save at the bottom.*
-
-```{r}
-
-access_token <- get_spotify_access_token(client_id = Sys.getenv("SPOTIFY_CLIENT_ID"),
-                                         client_secret = Sys.getenv("SPOTIFY_CLIENT_SECRET"))
-
-```
 
 **Option 1: Data Preparation**
 
@@ -66,46 +61,17 @@ Download the Spotify dataset from <https://www.kaggle.com/datasets/mrmorj/datase
 
 Inspect the data. Choose two genres you'd like to use for the classification task. Filter down the data to include only the tracks of that genre.
 
-```{r}
-#Get saved track list
-offsets_list <- c(seq(0, 2900, 50)) #create list to get saved songs
+**see the r script lab5_get_spotify_data.R for accessing data via spotify API.** Below I read in the data I pulled from spotify, and saved the API calls and data manipulation in a separate script to make knitting faster for this markdown file.
 
-saved_tracks_eb <- lapply(X = offsets_list,
-                           FUN = get_my_saved_tracks, 
-                           limit = 50
-                           ) |> #produce list of dfs for each call of 50
-  bind_rows() #bind lists into one df
+```{r load_data}
 
-#Get saved track attributes
-
-track_id_list <- saved_tracks_eb$track.id #create list of track ids
-
-track_attributes_eb <- lapply(X = track_id_list,
-                              FUN = get_track_audio_features) |> 
-  bind_rows()
-
-
-#now append track list name to the track attributes df
-
-saved_track_names <- saved_tracks_eb |> 
-  select(track.name, track.id) |> #select out just track name and id
-  rename(id = track.id) #rename id column to join
-
-eb_tracks_df <- left_join(track_attributes_eb, saved_track_names, by = "id") #join df
-
-#add user column
-eb_tracks_df <- eb_tracks_df |> 
-  add_column(user = "Erica")
-
-
-#save dataframe as a csv to send to Jillian
-write_csv(eb_tracks_df, here("eb_track_attributes.csv"))
+#read in data (saved as csv from r script code)
+eb_tracks_df <- read_csv(here("eb_track_attributes.csv"))
 
 #read in Jillian's data
 ja_tracks_df <- read_csv(here("jillian_spotify_data.csv")) |> 
   select(-track_id) |> #drop track_id column (repeats id column)
   rename(track.name = track_name)#renametrack_name to match
-
 
 ```
 
@@ -150,7 +116,7 @@ ja_summary <- ja_tracks_df |>
 #combine the summary stats tables into one df 
 summary_df <- rbind(eb_ja_summary, eb_summary, ja_summary)
 
-stargazer::stargazer(summarydf)
+gt(summary_df) #print as table
 
 ```
 
@@ -162,7 +128,7 @@ stargazer::stargazer(summarydf)
 eb_ja_tracks <- full_join(eb_tracks_df,
                           ja_tracks_df,
                           by = c("danceability", "energy", "key", "loudness", "mode", "speechiness", "acousticness", "instrumentalness", "liveness", "valence", "tempo", "type", "id", "uri", "track_href", "analysis_url", "duration_ms", "time_signature", "track.name")) |> 
-  mutate(user = case_when( 
+  mutate(user = case_when(
     user.y == "Jillian" & user.x == "Erica" ~ "Both", #relabel songs in both user lists with case_when
     user.y == "Jillian" & is.na(user.x) ~ "Jillian",
     TRUE ~ "Erica"
@@ -227,7 +193,9 @@ mode_plot <- ggplot(data = eb_ja_tracks,
   geom_boxplot() +
   labs(title = "Loudness")
 
-dance_plot + energy_plot + key_plot + valence_plot + tempo_plot + mode_plot
+dance_plot + energy_plot + key_plot + valence_plot + tempo_plot + mode_plot +
+  plot_layout(guides = 'collect')
+
 
 ```
 Based on how similar these variables are across Jillian and me, it could be very tough for the models to correctly classify tracks - but we'll see!
@@ -286,11 +254,6 @@ tracks_recipe <- recipe(user ~., data = tracks_train) |>
   step_normalize(all_numeric(), -all_outcomes()) |> #normalize scale of numeric variables 
   prep()
 
-#bake training data
-baked_tracks <- bake(tracks_recipe, tracks_train)
-
-#bake testing data too - for later ;)
-baked_test_tracks <- bake(tracks_recipe, tracks_test)
 
 ```
 

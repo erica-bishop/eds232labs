@@ -85,7 +85,6 @@ knn_fit
 
 ```{r cv}
 #do cross-validation to tune the parameter
-
 set.seed(123)
 # 10-fold CV on the training dataset
 cv_folds <- churn_train |> 
