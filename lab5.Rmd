@@ -25,6 +25,7 @@ library(tidyverse)
 library(tidymodels)
 library(here)
 library(tune)
+library(baguette)
 
 ```
 
@@ -291,25 +292,9 @@ baked_test_tracks <- bake(tracks_recipe, tracks_test)
 
 ```
 
-## KNN Model
+Create re-sampling folds 
 
-```{r knn_model}
-
-#set engine and specifications for KNN model
-knn_spec <- nearest_neighbor() |> 
-  set_engine("kknn") |> #specify how with engine
-  set_mode("classification") #specify classificaton
-
-#fit a simple model without tuning - what happens?
-#what happens when you just fit this model?
-knn_fit <- knn_spec %>% 
-  fit(user ~. , data = tracks_train)
-
-knn_fit
-
-```
-
-```{r knn_resample_tune}
+```{r resample_folds}
 
 #resample
 ## This resampling can be used for all of the models below!
@@ -317,31 +302,47 @@ set.seed(123)
 cv_folds <-tracks_train |> 
   vfold_cv() #10 folds is default
 
-#create a workflow to tune
+```
+
+## KNN Model
+
+```{r knn_wf}
+#specify model
+knn_spec <- nearest_neighbor(neighbors = tune()) |> #use tune to find optimal number of neighbors
+  set_engine("kknn") |> 
+  set_mode("classification") 
+
+#create a workflow
 knn_workflow <- workflow() |> 
   add_model(knn_spec) |> 
   add_recipe(tracks_recipe)
 
 
-#fit resamples and tuning grid to workflow
-knn_rs_wf <- workflow() |> 
-  add_model(knn_spec) |> #add specification defined above
-  add_recipe(tracks_recipe) |> #add recipe
-  fit_resamples(
-    resamples = cv_folds, #fit to resampled data
-    control = control_resamples(save_pred = TRUE)
-  ) 
+```
+
+```{r knn_rs}
+
+#fit resamples to the workflow
+knn_res <- 
+  knn_workflow |> 
+  fit_resamples( #tuning function
+    resamples = cv_folds,
+    control = control_resamples(save_pred = TRUE) #save prediction
+    )
 
 
 
-#|>
-  # tune_grid( 
-  #   cv_folds,
-  #   grid = data.frame(neighbors = c(1, 5, seq(10, 100, 10))) #test k values up to 100 by 10s
-  # )
- 
-#check out the wf
-knn_final_wf
+```
+
+```{r knn_tune}
+# Fit the tuned and resampled workflow on our predefined folds and hyperparameters
+fit_knn_cv <- wf_knn_tune |> 
+  tune_grid( 
+    cv_folds,
+    grid = data.frame(neighbors = c(1, 5, seq(10,100,10)))) 
+
+
+
 
 ```
 
@@ -363,23 +364,6 @@ fit_knn_cv %>% collect_metrics()
 
 ## Decision Tree
 
-
-```{r dtree_model}
-
-#starting with a fixed specification model
-tree_spec_fixed <- decision_tree(
-  cost_complexity = 0.1,
-  tree_depth = 4,
-  min_n = 11, #min node size for splits
-) |> 
-  set_engine("rpart") |> 
-  set_mode("classification")
-
-
-
-```
-
-
 ```{r dtree_tune}
 
 #create a model with with tuning specifications
@@ -399,15 +383,18 @@ tree_grid <- grid_regular(cost_complexity(), tree_depth(),
 tree_grid
 
 
-
 ```
 
-```{r dtree_resample}
+```{r}
 
-#use resampling folds (speciifed above) to build trees in parallel
+#add tree specifications to a workflow
+wf_tree_tune <- workflow() |> 
+  add_recipe(tracks_recipe) |> 
+  add_model(tree_spec_tune)
+
 
 doParallel::registerDoParallel() #build trees in parallel
-#200s
+
 tree_rs <- tune_grid(
   tree_spec_tune,
   user~.,
@@ -418,16 +405,31 @@ tree_rs <- tune_grid(
 
 tree_rs
 
+#check out resampled models
 
+autoplot(tree_rs) +
+  theme_minimal()
 
 ```
+```{r}
+
+show_best(tree_rs) #show me the best tree! 
+select_best(tree_rs) #pick the best tree
+
+```
+As shown in the plot above and the output from the `select_best` tree function, my best model has a tree depth of just one. I suspect this is because the tracks in the two user groups are so similar so the greater depth is adding variance and making the model worse.
 
 
-```{r dtree_metrics}
+```{r}
+final_tree <- finalize_model(tree_spec_tune, select_best(tree_rs)) #finalize model
 
-#table of metrics
+#show the predictions from this final model
+final_tree_fit <- last_fit(final_tree, 
+                           user~.,
+                           tracks_split)
 
-#at least one visual of results
+final_tree_fit$.predictions
+
 
 ```
 
@@ -436,40 +438,86 @@ tree_rs
 
 ```{r bagg_model}
 
+#specify model with tuning parameters
+set.seed(123)
+bag_spec <- bag_tree(
+  cost_complexity = tune(),
+  tree_depth = tune(),
+  min_n = tune()
+) |> 
+  set_engine("rpart", times = 100) |> 
+  set_mode("classification")
+
+#create hyperparameter search grid
+bagrid <- grid_regular(
+  cost_complexity(),
+  tree_depth(),
+  min_n(),
+  levels = 5
+)
+
+#wrap up into a workflow
+wf_bag_tune <- workflow() |> 
+  add_recipe(tracks_recipe) |> 
+  add_model(bag_spec)
 
 
 ```
 
-```{r bagg_resample}
+```{r}
+#now resample the bagging (in parallel)
+
+doParallel::registerDoParallel()
+
+bag_rs <- tune_grid(
+  wf_bag_tune,
+  user ~.,
+  resamples = cv_folds,
+  grid = bagrid,
+  metrics = metric_set(accuracy) #assess accuracy of trees
+)
 
 
 
 ```
 
-```{r bagg_tune}
-
-
-
-```
-
-```{r bagg_metrics}
-
-#table of metrics
-
-#at least one visual of results
-
-```
 
 ## Random Forest
 
 ```{r rf_model}
+#specify model
+
+rand_spec <- rand_forest(
+  mtry = 4, #using sqrt(p) = 4 for mtry
+  trees = 500, #using default number
+  min_n = 10 #default
+) |> 
+  set_engine("ranger") |> #based on google ranger seems like a good engine to use for parallelization?
+  set_mode("classification")
+
+#might need to install the butcher package
+
+#specify model for tuning
+rand_spec_tune <- rand_forest(
+  mtry = tune(),
+  trees = tune(),
+  min_n = tune()
+) |> 
+  set_engine("ranger") |> 
+  set_mode("classification")
 
 
+#bundle into a workflow and fit resamples
+wf_randf <- workflow() |> 
+  add_recipe(tracks_recipe) |> 
+  add_model(rand_spec_tune) |> 
+  fit_resamples(vc_folds)
 
 
 ```
 
 ```{r rf_resample}
+
 
 
 
@@ -491,13 +539,12 @@ tree_rs
 
 ```
 
-
 ## Comparing the models
 ```{r model_metrics}
 
 #table of metrics
 
-#at least one visual of results
+#at least one visual of results for each model
 
 ```
 
