@@ -28,6 +28,8 @@ library(here)
 library(patchwork)
 library(tune)
 library(baguette)
+library(doParallel)
+library(ranger)
 
 ```
 
@@ -230,7 +232,7 @@ Tuning. Find the best values for each hyperparameter (within a reasonable range)
 
 Compare the performance of the four final models you have created.  
 
-Use appropriate performance evaluation metric(s) for this classification task. A table would be a good way to display your comparison.  Use at least one visualization illustrating your model results.
+Use appropriate performance evaluation metric(s) for this classification task. A table would be a good way to display your comparison.  Use at least one visualization illustrating your model results
 
 ## Pre-Processing
 Splitting the data and encoding - this pre-processed data will be used in each of the four models below.
@@ -332,6 +334,13 @@ knn_metrics <- final_knn_fit |> collect_metrics()
 
 ```
 
+```{r knn_plot}
+g
+
+
+```
+
+
 ## Decision Tree
 
 ```{r dtree_tune}
@@ -381,6 +390,7 @@ autoplot(tree_rs) +
   theme_minimal()
 
 ```
+
 ```{r}
 
 show_best(tree_rs) #show me the best tree! 
@@ -433,23 +443,43 @@ bagrid <- grid_regular(
 #wrap up into a workflow
 wf_bag_tune <- workflow() |> 
   add_recipe(tracks_recipe) |> 
-  add_model(bag_spec)
-
+  add_model(bag_spec_tune)
 
 ```
 
-```{r}
-#now resample the bagging (in parallel)
+```{r bag_tune}
 
-doParallel::registerDoParallel()
-
+#trying to make this faster by using more cores than default:
+ncores <- detectCores() - 1 #use one less than the number of cores on my machine
+registerDoParallel(cores = ncores) #register this number of cores
+cl <- makeCluster(ncores, type = "FORK") #make cluster with fork
+registerDoParallel(cl)
+#fit workflow to resamples
 bag_rs <- tune_grid(
-  wf_bag_tune,
+  bag_spec_tune,
   user ~.,
   resamples = cv_folds,
   grid = bagrid,
-  metrics = metric_set(accuracy) #assess accuracy of trees
+  metrics = metric_set(accuracy)
 )
+stopCluster(cl) #manually stop clusters
+stopImplicitCluster() #running into problems - hopefully this stops it better??
+
+```
+
+
+```{r bag_final}
+
+final_bag <- finalize_model(bag_spec_tune, select_best(bag_rs)) #finalize model
+
+#show the predictions from this final model
+final_bag_fit <- last_fit(final_bag, 
+                           user~.,
+                           tracks_split)
+
+final_bag_fit$.predictions #look at some predictions if you want if you care
+
+bag_metrics <- collect_metrics(final_bag_fit)
 
 
 ```
@@ -460,73 +490,59 @@ bag_rs <- tune_grid(
 ```{r rf_model}
 #specify model
 
-rand_spec <- rand_forest(
-  mtry = 4, #using sqrt(p) = 4 for mtry
-  trees = 500, #using default number
-  min_n = 10 #default
-) |> 
-  set_engine("ranger") |> 
-  set_mode("classification")
-
-#might need to install the butcher package
-
-#specify a range for mtry
-mtry() |> 
-range_set(c(1, ncol(tracks_train) - 1))
-
-
-#specify model for tuning
 rand_spec_tune <- rand_forest(
-  mtry = tune(),
-  trees = tune(),
-  min_n = tune()
+  mtry = tune(), #using sqrt(p) = 4 for mtry
+  trees = 1000, #using default number
+  min_n = tune() 
 ) |> 
   set_engine("ranger") |> 
   set_mode("classification")
 
-#create hyper parameter search grid for tuning
-set.seed(123)
-forest_grid <- grid_regular(
-  mtry(c(1, 4, 6)), #manually specify values for mtry
-  trees(),
-  levels = 3 #just trying three levels
+# put into a workflow
+wf_rand_tune <- workflow() |> 
+  add_recipe(tracks_recipe) |> 
+  add_model(rand_spec_tune)
+
+#train hyperparameters
+
+#set up paralelle again
+doParallel::registerDoParallel()
+set.seed(321)
+rand_tune_res <- tune_grid(
+  wf_rand_tune,
+  resamples = cv_folds,
+  grid = 20 #testing 20 points to tune
 )
 
-#bundle into a workflow and fit resamples
-wf_randf <- workflow() |> 
-  add_recipe(tracks_recipe) |> 
-  add_model(rand_spec_tune) |> 
-  fit_resamples(vc_folds)
-
-
+#select the best parameters
+rand_tune_best <- rand_tune_res |> 
+  select_best("accuracy")
 
 
 ```
 
-```{r rf_resample}
 
+```{r rand_final}
 
+final_rand <- finalize_model(rand_spec_tune, select_best(rand_tune_res)) #finalize model
 
+#show the predictions from this final model
+final_rand_fit <- last_fit(final_rand, 
+                           user~.,
+                           tracks_split)
 
-```
+final_rand_fit$.predictions #look at some predictions if you want if you care
 
-```{r rf_tune}
-
-
-
-
-```
-
-```{r rf_metrics}
-
-#table of metrics
-
-#at least one visual of results
+rand_metrics <- collect_metrics(final_rand_fit)
 
 
 ```
 
-## Comparing the models
+# Comparing the models
+
+Compare the performance of the four final models you have created.  
+
+Use appropriate performance evaluation metric(s) for this classification task. A table would be a good way to display your comparison.  Use at least one visualization illustrating your model results
 ```{r model_metrics}
 
 #compare metrics
@@ -534,17 +550,36 @@ knn_metrics
 
 tree_metrics
 
-#table of metrics
+bag_metrics
 
+rand_metrics
 
+#create table comparing accuracy metrics
+accuracy_tibble <- tibble(
+  model = c("knn", "decision_tree", "bagged_tree", "random_forest"),
+  accuracy = c(round(knn_metrics[1, 3], 3), round(tree_metrics[1, 3], 3), round(bag_metrics[1, 3], 3), round(rand_metrics[1, 3], 3)),
+  area_under_curve = c(round(knn_metrics[2, 3], 3), round(tree_metrics[2, 3], 3), round(bag_metrics[2, 3], 3), round(rand_metrics[2, 3], 3))
+)
 
-
-
-#at least one visual of results for each model
+gt(accuracy_tibble)
 
 ```
 
+```{r}
+#visualize accuracy
+ggplot(data = accuracy_tibble,
+       aes(x = model,
+           y = accuracy,
+           fill = model)) +
+  geom_col() +
+  labs(
+    title = "comparing the accuracy of four machine learning models"
+  )
 
+
+```
+
+The greatest accuracy and the greatest area under the curve came from the random forest model. It's not surprising that this preformed much better than a single decision tree because a forest has lower bias than a single tree. The Bagging preformed similarly, and probably could have been tuned to preform even better than it did but the computation time trade off wasn't worth it. I'm a little surprised that the KNN model preformed worst, even worse than the single decision tree. I think this is because in the case of which songs belong to which user, the similarity of songs may not be the best predictor - especially becuase Jillian and I both seem to have similar music preferences in terms of the features used in this model. 
 
 
 
