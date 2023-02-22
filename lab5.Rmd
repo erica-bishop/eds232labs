@@ -2,7 +2,7 @@
 title: "Lab 5 - part 1"
 author: "Erica Bishop (and Jillian Allison)"
 date: "2023-02-07"
-output: pdf_document
+output: html_document
 ---
 
 This week's lab is a musical lab. You'll be requesting data from the Spotify API and using it to build k-nearest neighbor and decision tree models.
@@ -35,15 +35,9 @@ library(ranger)
 
 Client ID and Client Secret are required to create and access token that is required to interact with the API. You can set them as system values so we don't have to do provide them each time.
 
-Sys.setenv(SPOTIFY_CLIENT_ID = '2e066a0ebf86473990f30eee626c4ab9') Sys.setenv(SPOTIFY_CLIENT_SECRET = 'bb6735cb728a42089e0cc02680c97844')
+Sys.seten
 
-access_token \<- get_spotify_access_token() #takes ID and SECRET, sends to Spotify and receives an access token
-
-> *This may result in an error:*
->
-> INVALID_CLIENT: Invalid redirect URI
->
-> *This can be resolved by editing the callback settings on your app. Go to your app and click "Edit Settings". Under redirect URLs paste this: <http://localhost:1410/> and click save at the bottom.*
+*see separate R script file for API data sourcing*
 
 **Option 1: Data Preparation**
 
@@ -122,7 +116,6 @@ gt(summary_df) #print as table
 
 ```
 
-
 ```{r}
 
 #combine both data sets
@@ -141,7 +134,6 @@ eb_ja_tracks <- full_join(eb_tracks_df,
 write_csv(eb_ja_tracks, here("eb_ja_tracks.csv"))
 
 ```
-
 
 ```{r}
 ### compare the spread of some key variables 
@@ -200,41 +192,44 @@ dance_plot + energy_plot + key_plot + valence_plot + tempo_plot + mode_plot +
 
 
 ```
+
 Based on how similar these variables are across Jillian and me, it could be very tough for the models to correctly classify tracks - but we'll see!
 
 ### **Modeling**
+
 #Now with an added random forest component and some clarification your task.
 
 Create competing models that predict whether a track belongs to:
 
-**Option 1.  you or your partner's collection**
+**Option 1. you or your partner's collection**
 
-Option 2.  genre 1 or genre 2
+Option 2. genre 1 or genre 2
 
 Create three final candidate models:
 
-1. k-nearest neighbor 
-2. decision tree
-3. bagged tree
-    - bag_tree()
-    - Use the "times =" argument when setting the engine during model specification to specify the number of         trees. The rule of thumb is that 50-500 trees is usually sufficient.  The bottom of that range should          be sufficient here.  
-4. random forest
-    - rand_forest()
-    - m_try() is the new hyperparameter of interest for this type of model.  Make sure to include it in your         tuning process
+1.  k-nearest neighbor
+2.  decision tree
+3.  bagged tree
+    -   bag_tree()
+    -   Use the "times =" argument when setting the engine during model specification to specify the number of trees. The rule of thumb is that 50-500 trees is usually sufficient. The bottom of that range should be sufficient here.\
+4.  random forest
+    -   rand_forest()
+    -   m_try() is the new hyperparameter of interest for this type of model. Make sure to include it in your tuning process
 
 Go through the modeling process for each model:
 
-Preprocessing. You can use the same recipe for all the models you create. 
+Preprocessing. You can use the same recipe for all the models you create.
 
 Resampling. Make sure to use appropriate resampling to select the best version created by each algorithm.
 
 Tuning. Find the best values for each hyperparameter (within a reasonable range).
 
-Compare the performance of the four final models you have created.  
+Compare the performance of the four final models you have created.
 
-Use appropriate performance evaluation metric(s) for this classification task. A table would be a good way to display your comparison.  Use at least one visualization illustrating your model results
+Use appropriate performance evaluation metric(s) for this classification task. A table would be a good way to display your comparison. Use at least one visualization illustrating your model results
 
 ## Pre-Processing
+
 Splitting the data and encoding - this pre-processed data will be used in each of the four models below.
 
 ```{r preprocessing}
@@ -259,7 +254,7 @@ tracks_recipe <- recipe(user ~., data = tracks_train) |>
 
 ```
 
-Create re-sampling folds 
+Create re-sampling folds
 
 ```{r resample_folds}
 
@@ -316,7 +311,6 @@ fit_knn_cv <- wf_knn_tune |>
 
 ```
 
-
 ```{r knn_metrics}
 
 # The final workflow for our KNN model
@@ -333,7 +327,6 @@ final_knn_fit <- final_knn_wf |>
 knn_metrics <- final_knn_fit |> collect_metrics()
 
 ```
-
 
 ## Decision Tree
 
@@ -391,8 +384,8 @@ show_best(tree_rs) #show me the best tree!
 select_best(tree_rs) #pick the best tree
 
 ```
-As shown in the plot above and the output from the `select_best` tree function, my best model has a tree depth of just one. I suspect this is because the tracks in the two user groups are so similar so the greater depth is adding variance and making the model worse.
 
+As shown in the plot above and the output from the `select_best` tree function, my best model has a tree depth of just one. I suspect this is because the tracks in the two user groups are so similar so the greater depth is adding variance and making the model worse.
 
 ```{r}
 final_tree <- finalize_model(tree_spec_tune, select_best(tree_rs)) #finalize model
@@ -465,7 +458,6 @@ bag_rs <- tune_grid(
 
 ```
 
-
 ```{r bag_final}
 
 final_bag <- finalize_model(bag_spec_tune, select_best(bag_rs)) #finalize model
@@ -481,7 +473,6 @@ bag_metrics <- collect_metrics(final_bag_fit)
 
 
 ```
-
 
 ## Random Forest
 
@@ -519,7 +510,6 @@ rand_tune_best <- rand_tune_res |>
 
 ```
 
-
 ```{r rand_final}
 
 final_rand <- finalize_model(rand_spec_tune, select_best(rand_tune_res)) #finalize model
@@ -538,9 +528,10 @@ rand_metrics <- collect_metrics(final_rand_fit)
 
 # Comparing the models
 
-Compare the performance of the four final models you have created.  
+Compare the performance of the four final models you have created.
 
-Use appropriate performance evaluation metric(s) for this classification task. A table would be a good way to display your comparison.  Use at least one visualization illustrating your model results
+Use appropriate performance evaluation metric(s) for this classification task. A table would be a good way to display your comparison. Use at least one visualization illustrating your model results
+
 ```{r model_metrics}
 
 #compare metrics
@@ -577,7 +568,4 @@ ggplot(data = accuracy_tibble,
 
 ```
 
-The greatest accuracy and the greatest area under the curve came from the random forest model. It's not surprising that this preformed much better than a single decision tree because a forest has lower bias than a single tree. The Bagging preformed similarly, and probably could have been tuned to preform even better than it did but the computation time trade off wasn't worth it. I'm a little surprised that the KNN model preformed worst, even worse than the single decision tree. I think this is because in the case of which songs belong to which user, the similarity of songs may not be the best predictor - especially becuase Jillian and I both seem to have similar music preferences in terms of the features used in this model. 
-
-
-
+The greatest accuracy and the greatest area under the curve came from the random forest model. It's not surprising that this preformed much better than a single decision tree because a forest has lower bias than a single tree. The Bagging preformed similarly, and probably could have been tuned to preform even better than it did but the computation time trade off wasn't worth it. I'm a little surprised that the KNN model preformed worst, even worse than the single decision tree. I think this is because in the case of which songs belong to which user, the similarity of songs may not be the best predictor - especially becuase Jillian and I both seem to have similar music preferences in terms of the features used in this model.
