@@ -443,11 +443,15 @@ wf_bag_tune <- workflow() |>
 
 ```{r bag_tune}
 
-#trying to make this faster by using more cores than default:
-ncores <- detectCores() - 1 #use one less than the number of cores on my machine
-registerDoParallel(cores = ncores) #register this number of cores
-cl <- makeCluster(ncores, type = "FORK") #make cluster with fork
-registerDoParallel(cl)
+# #trying to make this faster by using more cores than default:
+# ncores <- detectCores() - 1 #use one less than the number of cores on my machine
+# registerDoParallel(cores = ncores) #register this number of cores
+# cl <- makeCluster(ncores, type = "FORK") #make cluster with fork
+# registerDoParallel(cl)
+
+#using taylor to knit instead so hopefully basic function will work:
+doParallel::registerDoParallel()
+
 #fit workflow to resamples
 bag_rs <- tune_grid(
   bag_spec_tune,
@@ -456,8 +460,8 @@ bag_rs <- tune_grid(
   grid = bagrid,
   metrics = metric_set(accuracy)
 )
-stopCluster(cl) #manually stop clusters
-stopImplicitCluster() #running into problems - hopefully this stops it better??
+# stopCluster(cl) #manually stop clusters
+# stopImplicitCluster() #running into problems - hopefully this stops it better??
 
 ```
 
