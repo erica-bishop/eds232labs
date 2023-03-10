@@ -2,7 +2,7 @@
 title: "Lab 6"
 author: "Erica Bishop"
 date: "2023-03-01"
-output: pdf_document
+output: html_document
 ---
 
 ## Case Study Eel Species Distribution Modeling
@@ -17,17 +17,6 @@ library(tictoc)
 library(xgboost)
 
 ```
-
-```{r chunk_setup}
-# set default chunk options
-knitr::opts_chunk$set(fig.width = 4, fig.height = 3, 
-                      echo = TRUE, message = FALSE, 
-                      warning = FALSE, tidy.opts = list(width.cutoff = 60), 
-                      tidy = TRUE)
-
-```
-
-
 ## Data
 
 Grab the model training data set from the class Git:
@@ -37,7 +26,9 @@ data/eel.model.data.csv
 ```{r}
 
 eels <- read_csv(file = "https://raw.githubusercontent.com/MaRo406/eds-232-machine-learning/main/data/eel.model.data.csv") |> 
-  clean_names()
+  clean_names() |> 
+  mutate(angaus = as.factor(angaus)) #make outcome variable a factor
+  #theres probably a way to do this in the recipe but kept getting errors so its happening here
 
 ```
 
@@ -49,8 +40,8 @@ Split the joined data from above into a training and test set, stratified by out
 set.seed(654) #set seed
 
 #split data
-eels_split <- initial_split(data = eels, #using default split
-                            strata = angaus) #specifying outcome stratification
+eels_split <- initial_split(data = eels, #using default 70/30 split
+                            strata = angaus) #stratify bt outcome variable
 eels_train <- training(eels_split)
 eels_test <- testing(eels_split)
 
@@ -72,6 +63,11 @@ eels_rec <- recipe(angaus ~ ., #using all predictors
   step_normalize(all_numeric(), -all_outcomes()) |> #normalize numeric vars
   prep()
 
+#bake it (for the sake of tuning mtry later)
+baked_eels <-
+  eels_rec |> 
+  bake(eels_train)
+
 ```
 
 ## Tuning XGBoost
@@ -85,30 +81,17 @@ Following the XGBoost tuning strategy outlined on Monday, first we conduct tunin
 -   Only specify one parameter to tune()
 
 ```{r}
-
-eels_xgb_spec1 <- boost_tree(learn_rate = tune(),
-                             trees = 3000 #set ntrees, use defaulst for rest
+#specify model parameters (just learn rate to start)
+eels_xgb_spec1 <- boost_tree(learn_rate = tune()
                              ) |> 
   set_engine("xgboost") |> 
   set_mode("classification")
 
-#create tuning grid
+#put into workflow
+eels_wf1 <- workflow() |> 
+  add_model(eels_xgb_spec1) |> 
+  add_recipe(eels_rec)
 
-#search grid of hyperparameter possibilities
-#grid_max_entropy gives evenly spaced attempts - can be more efficient
-xg_grid <- expand.grid(#feedsequence)
-
-#tune in parallel
-doParallel::registerDoParallel()
-
-#tune the learn rate parameter
-xg_tune_grid <- tune_grid(
-  eels_xgb_spec1, #model specification
-  angaus ~., #formula
-  resamples = eels_cv, #resampling
-  grid = xg_grid, #use search grid
-  metrics = metric_set(accuracy)
-  )
 
 ```
 
@@ -117,35 +100,292 @@ xg_tune_grid <- tune_grid(
 
 -   Use appropriate metrics argument(s) - Computational efficiency becomes a factor as models get more complex and data get larger. Record the time it takes to run. Do this for each tuning phase you run.You could use {tictoc} or Sys.time().
 
+```{r}
+#create grid
+tune_grid <- expand.grid(learn_rate = seq(0.0001, 0.3, length.out = 30))
+
+tic() #start timer
+#tune in parallel
+doParallel::registerDoParallel()
+# Fit the workflow on our predefined folds and hyperparameters
+fit_eels1 <- eels_wf1 |> 
+  tune_grid( 
+    eels_cv,
+    grid = tune_grid,
+    metrics = metric_set(accuracy))
+toc() #end timer
+
+#FOR REFERENCE: This is the approach without a workflow - just specify formula each time
+#tune the grid
+# xbg_tune_learnrate <- tune_grid(
+#   eels_xgb_spec1, #model specification
+#   angaus ~., #formula
+#   resamples = eels_cv, #resampling
+#   grid = tune_grid, #use search grid
+#   metrics = metric_set(accuracy) 
+# )
+
+
+```
+
 3.  Show the performance of the best models and the estimates for the learning rate parameter values associated with each.
+
+```{r}
+#collect metrics
+eels1_metrics <- fit_eels1 |> 
+  collect_metrics()
+
+#visually check out the accuracy
+autoplot(fit_eels1) 
+#looks like as learning rate increases the accuracy increases
+
+```
+```{r}
+
+show_best(fit_eels1) #show me the best tree! 
+select_best(fit_eels1) #pick the best tree
+
+best_learn_rate <- as.numeric(select_best(fit_eels1)[1,1]) #store optimal value as number
+
+```
 
 ### Tune Tree Parameters
 
 1.  Create a new specification where you set the learning rate (which you already optimized) and tune the tree parameters.
 
+```{r}
+
+#specify model new parameters with optimal learn rate
+eels_xgb_spec2 <- boost_tree(learn_rate = best_learn_rate,
+                             trees = 3000,
+                             tree_depth = tune(),
+                             min_n = tune(),
+                             loss_reduction = tune()
+                             ) |> 
+  set_engine("xgboost") |> 
+  set_mode("classification")
+
+#put into workflow
+eels_wf2 <- workflow() |> 
+  add_model(eels_xgb_spec2) |> 
+  add_recipe(eels_rec)
+
+
+```
+
+
 2.  Set up a tuning grid. This time use grid_max_entropy() to get a representative sampling of the parameter space
 
+```{r}
+
+#set up parameters to feed to the grid
+xgb_params <- parameters( #list same parameters with tune() in spec
+  tree_depth(),
+  min_n(),
+  loss_reduction()
+)
+
+#create grid
+grid_2 <- grid_max_entropy(
+  xgb_params,
+  size = 60 #total number of parameter value combos
+)
+
+tic() #start timer
+#tune in parallel
+doParallel::registerDoParallel()
+# Fit the workflow on our predefined folds and hyperparameters
+fit_eels2 <- eels_wf2 |> 
+  tune_grid( 
+    eels_cv,
+    grid = grid_2,
+    metrics = metric_set(accuracy))
+toc() #end timer
+
+
+```
+
 3.  Show the performance of the best models and the estimates for the tree parameter values associated with each.
+
+```{r}
+
+#collect metrics
+eels2_metrics <- fit_eels2 |> 
+  collect_metrics()
+
+#visually check out the accuracy
+autoplot(fit_eels2) 
+#YIKES - These are all over the place 
+#is it becuase of the way the three are combined? Why is there no trend?
+
+```
+```{r}
+show_best(fit_eels2) #show me the best tree
+
+#store best tuning parameters
+best_min_n <- as.numeric(select_best(fit_eels2)[1,1])
+  
+best_tree_depth <- as.numeric(select_best(fit_eels2)[1,2])
+  
+best_loss <- as.numeric(select_best(fit_eels2)[1,3])
+
+```
+
 
 ### Tune Stochastic Parameters
 
 1.  Create a new specification where you set the learning rate and tree parameters (which you already optimized) and tune the stochastic parameters.
 
+```{r}
+
+#specify model new optimized parameters
+eels_xgb_spec3 <- boost_tree(learn_rate = best_learn_rate,
+                             trees = 3000,
+                             tree_depth = best_tree_depth,
+                             min_n = best_min_n,
+                             loss_reduction = best_loss,
+                             mtry = tune(),
+                             sample_size = tune()
+                             ) |> 
+  set_engine("xgboost") |> 
+  set_mode("classification")
+
+#put into workflow
+eels_wf3 <- workflow() |> 
+  add_model(eels_xgb_spec3) |> 
+  add_recipe(eels_rec)
+
+```
+
+
 2.  Set up a tuning grid. Use grid_max_entropy() again.
 
+```{r}
+
+#set up parameters to feed to the grid
+xgb_params2 <- parameters( #list same parameters with tune() in spec
+  finalize(mtry(), select(baked_eels, -angaus)), #mtry needs to be determined based on data (p)
+  sample_size = sample_prop(
+    c(0.4, 0.9) #requires proportion rather than integer
+  )
+)
+
+#create grid
+grid_3 <- grid_max_entropy(
+  xgb_params2,
+ size =  60 #trying larger size to see if this improves 
+ #larger size improves performance but slower computation
+)
+
+tic() #start timer
+#tune in parallel
+doParallel::registerDoParallel()
+# Fit the workflow on our predefined folds and hyperparameters
+fit_eels3 <- eels_wf3 |> 
+  tune_grid( 
+    eels_cv,
+    grid = grid_3,
+    metrics = metric_set(accuracy))
+toc() #end timer
+
+
+```
+
+
 3.  Show the performance of the best models and the estimates for the tree parameter values associated with each.
+
+```{r}
+#visually check out the accuracy
+autoplot(fit_eels3) 
+
+```
+
+```{r}
+
+
+show_best(fit_eels3) #show me the best tree
+
+#store best tuning parameters
+best_mtry <- as.numeric(select_best(fit_eels3)[1,1])
+  
+best_samplesize <- as.numeric(select_best(fit_eels3)[1,2])
+  
+```
+
 
 ## Finalize workflow and make final prediction
 
 1.  Assemble your final workflow will all of your optimized parameters and do a final fit.
 
+```{r}
+#create final model specification with tuned parameters
+eels_final_spec <- boost_tree(
+    learn_rate = best_learn_rate,
+    trees = 3000,
+    tree_depth = best_tree_depth,
+    min_n = best_min_n,
+    loss_reduction = best_loss,
+    mtry = best_mtry,
+    sample_size = best_samplesize
+) |> 
+  set_engine("xgboost") |> 
+  set_mode("classification")
+
+#Final workflow
+final_wf <- workflow() |> 
+  add_model(eels_final_spec) |> 
+  add_recipe(eels_rec)
+
+#Do a final fit and show predictions
+final_eels_fit <- last_fit(
+  final_wf,
+  angaus ~.,
+  split = eels_split
+)
+
+
+final_eels_fit$.predictions #look at some predictions
+
+#add predictions to data_fram
+eels_ouput <- 
+
+
+eel_metrics <- collect_metrics(final_eels_fit)
+
+gt::gt(eel_metrics) #print out table
+
+```
+
+
 2. How well did your model perform? What types of errors did it make?
+
+The overall accuracy of my model was 84.46% accurate predictions for the presence of angaus eels. 
+
 
 ## Fit your model the evaluation data and compare performance
 
 1.  Now fit your final model to the big dataset: data/eval.data.csv
 
+```{r}
+
+#read in eval data
+
+eels_eval_data <- read_csv(file = "https://raw.githubusercontent.com/MaRo406/eds-232-machine-learning/main/data/eel.eval.data.csv") |> 
+  clean_names() |>  
+  rename(angaus = angaus_obs) #rename outcome to match
+
+
+```
+
+
 2.  How does your model perform on this data?
+
+```{r}
+
+
+
+```
+
 
 3.  How do your results compare to those of Elith et al.?
 
