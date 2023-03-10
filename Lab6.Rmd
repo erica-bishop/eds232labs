@@ -15,6 +15,7 @@ library(tidymodels)
 library(janitor)
 library(tictoc)
 library(xgboost)
+library(vip)
 
 ```
 ## Data
@@ -114,16 +115,6 @@ fit_eels1 <- eels_wf1 |>
     grid = tune_grid,
     metrics = metric_set(accuracy))
 toc() #end timer
-
-#FOR REFERENCE: This is the approach without a workflow - just specify formula each time
-#tune the grid
-# xbg_tune_learnrate <- tune_grid(
-#   eels_xgb_spec1, #model specification
-#   angaus ~., #formula
-#   resamples = eels_cv, #resampling
-#   grid = tune_grid, #use search grid
-#   metrics = metric_set(accuracy) 
-# )
 
 
 ```
@@ -336,30 +327,40 @@ final_wf <- workflow() |>
   add_model(eels_final_spec) |> 
   add_recipe(eels_rec)
 
+#maybe this will work better:
+final_model <- finalize_model(eels_final_spec, select_best(fit_eels3))
+
 #Do a final fit and show predictions
 final_eels_fit <- last_fit(
-  final_wf,
+  final_model,
   angaus ~.,
   split = eels_split
 )
 
-
-final_eels_fit$.predictions #look at some predictions
-
-#add predictions to data_fram
-eels_ouput <- 
-
+final_eels_fit$.predictions #look at some predictions on the test data
 
 eel_metrics <- collect_metrics(final_eels_fit)
 
-gt::gt(eel_metrics) #print out table
+gt::gt(eel_metrics) #print out table of metrics
 
 ```
 
-
 2. How well did your model perform? What types of errors did it make?
 
-The overall accuracy of my model was 84.46% accurate predictions for the presence of angaus eels. 
+The overall accuracy of my model was 84.46% accurate predictions for the presence of angaus eel, and the area under the curve os 0.867, which is a pretty good performance! (The closer to 1, the better). As you can see in the heatmap below, the most common type of error was false negative (predicting a value of 0 for no eels, when there were in fact eels present). The false negative rate was higher than the false positive rate for this model, I think because the majority class was the negative class (0, or an absence of eels). 
+
+```{r}
+#put predictions into dataframe
+eel_preds <- as.data.frame(final_eels_fit$.predictions) |> 
+  select(c(.pred_class, angaus))
+
+#show the confustion matrix
+conf_mat(eel_preds,
+         truth = angaus,
+         estimate = .pred_class) |> 
+  autoplot(type = "heatmap")
+
+```
 
 
 ## Fit your model the evaluation data and compare performance
@@ -393,12 +394,49 @@ eval_eels_fit <- last_fit(
 
 ```{r}
 
+eval_eels_fit$.predictions #look at some predictions on the test data
 
+eval_metrics <- collect_metrics(eval_eels_fit)
+
+gt::gt(eval_metrics) #print out table of metrics
 
 ```
 
+```{r}
+#put predictions into dataframe
+eval_preds <- as.data.frame(eval_eels_fit$.predictions) |> 
+  select(c(.pred_class, angaus))
+
+#show the confustion matrix
+conf_mat(eval_preds,
+         truth = angaus,
+         estimate = .pred_class) |> 
+  autoplot(type = "heatmap")
+
+
+```
+The model performed similarly on the evaluation data, with 82.9% accuracy and an ROC value of 0.87. As you can see in the two confustion matrices, the models made very similar types of errors with the false negative rate being higher than the false positive rate. 
 
 3.  How do your results compare to those of Elith et al.?
 
 -   Use {vip} to compare variable importance
 -   What do your variable importance results tell you about the distribution of this eel species?
+
+```{r}
+
+final_eels_fit |> 
+  extract_fit_parsnip() |> 
+  vip(geom = "point",
+      num_features = 13) +
+  labs(title = "Variable Importance in XGBoost Model") +
+  theme_minimal()
+
+
+```
+
+`seg_sum_t`, which is the summer air temperature, had a much higher importance score than the other variables, including the winter air temperature (`seg_t_seas`). This indicates to me that the summer air temperature has a high influence on the success of the eels lifecycle and breeding season - moreso than the winter air temperatures. This was also the most important predictor identified in  Elith et al. 
+
+The next most important predictors were areas with higher indigenous forest proportions (`us_native`), the site, and the distance to the coast, `ds_dist`. It's interesting that the presence of indigenous forests is so important for eel populations - this is probably because there are more complex ecosystem relationships between the properties of indigenous forests (biodiversity, lack of invasive species, etc.). 
+
+Elith et al. also identified the proportion of native forests and the distance to coast as key predictors, along with bed sediment and maximum slope (`loc_sed` and `us_slope`). However, the paper also included fishing method as an important predictor, which was one of the least important predictors in my model. I think this is likely because when I encoded the fishing method, it split the predictor into multiple variables for the types of fishing methods, which perhaps diluted the predictive power of the variable. 
+
