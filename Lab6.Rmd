@@ -369,10 +369,21 @@ The overall accuracy of my model was 84.46% accurate predictions for the presenc
 ```{r}
 
 #read in eval data
-
 eels_eval_data <- read_csv(file = "https://raw.githubusercontent.com/MaRo406/eds-232-machine-learning/main/data/eel.eval.data.csv") |> 
   clean_names() |>  
   rename(angaus = angaus_obs) #rename outcome to match
+
+#split this data
+eels_eval_split <- initial_split(eels_eval_data)
+eels_eval_train <- training(eels_eval_split)
+eels_eval_test <- testing(eels_eval_split)
+
+#fit model to the new data!
+eval_eels_fit <- last_fit(
+  final_wf,
+  angaus ~.,
+  split = eels_split
+)
 
 
 ```
