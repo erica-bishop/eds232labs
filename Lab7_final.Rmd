@@ -1,0 +1,49 @@
+---
+title: "Final Lab"
+author: "Erica Bishop"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r libraries}
+library(tidyverse)
+library(tidymodels)
+library(tune)
+library(baguette)
+library(doParallel)
+library(ranger)
+library(janitor)
+
+```
+
+```{r}
+#read in data
+
+calcofi_training <- read_csv("/Users/ericabishop/Documents/MEDSwinter/EDS232-ml/calcofi_data/train.csv") |> 
+  select(-c("...13")) #remove weird extra blank column
+
+calcofi_testing <- read_csv("/Users/ericabishop/Documents/MEDSwinter/EDS232-ml/calcofi_data/test.csv")
+
+```
+
+## Set up initial split
+
+splitting the training data set will allow me to test and tune my models before submitting to testing 
+
+```{r}
+
+#split the data FIRST
+set.seed(8992) #set seed
+
+data_split <- initial_split(calcofi_training) #split
+data_train <- training(data_split) #training dataset
+data_test <- testing(data_split) #testing dataset
+
+
+```
+
+
+
+
+
+
