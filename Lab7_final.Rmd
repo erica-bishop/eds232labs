@@ -5,14 +5,20 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
+
+I decided to use an elastic net to model dissolved inorganic carbon based on the oceanographic features in the CalCofi training dataset. A ridge regression is typically better at handling correlated feature than a lasso regression (of which there are many in this dataset), but after testing both a pure ridge regression and an elastic net, the elastic net resulted in a slightly lower RMSE. 
+
+I felt that a ridge regression/elastic net would also be a more apropriate choice in this scenario because I could run and tune it more quickly than other machine learning models, and the feature interpretability remains high. 
+
+Below is my code for setting up and training the model.
+
 ```{r libraries}
 library(tidyverse)
 library(tidymodels)
 library(tune)
-library(baguette)
-library(doParallel)
-library(ranger)
-library(janitor)
+library(glmnet)
+library(caret)
+# library(bestNormalize)
 
 ```
 
@@ -20,11 +26,29 @@ library(janitor)
 #read in data
 
 calcofi_training <- read_csv("/Users/ericabishop/Documents/MEDSwinter/EDS232-ml/calcofi_data/train.csv") |> 
-  select(-c("...13")) #remove weird extra blank column
+  select(-c("...13")) |>  #remove weird extra blank column
+  rename(TA1 = TA1.x)
 
 calcofi_testing <- read_csv("/Users/ericabishop/Documents/MEDSwinter/EDS232-ml/calcofi_data/test.csv")
 
 ```
+
+## Data exploration
+
+Learn something about dissolved inorganic carbon and the data. Any insights on what might make a better model? Any hints on what the best predictors are?
+
+```{r}
+
+skimr::skim(calcofi_training)
+
+#For modeling purposes, drop unique identifiers (id, lat, lon)
+
+calcofi_training <- calcofi_training #|> 
+  # select(-c(id, Lat_Dec, Lon_Dec))
+
+
+```
+All variables are numeric, so no encoding needed, but do need to normalize
 
 ## Set up initial split
 
@@ -35,12 +59,226 @@ splitting the training data set will allow me to test and tune my models before 
 #split the data FIRST
 set.seed(8992) #set seed
 
-data_split <- initial_split(calcofi_training) #split
+data_split <- initial_split(calcofi_training,
+                            strata = "DIC") #strata by outcome
 data_train <- training(data_split) #training dataset
 data_test <- testing(data_split) #testing dataset
 
+#create a recipe
+#build a recipe and tidy model to package up a ridge regression
+dic_recipe <- recipe(DIC ~ ., data = data_train) |> 
+  step_normalize(all_numeric(), -all_outcomes()) |> #normalize
+  prep()
+
 
 ```
+
+# Final Model
+The code chunk below is the final model for submission to kaggle. The subsequent code chunks show more of my exploration and process to get this model.
+
+```{r}
+
+#model parameters set during exploration below
+mod_spec <- linear_reg(penalty = 0, #a plain old regression work much better than using the optimal lambda of 11ish
+                      mixture = 0.8) |> 
+  set_engine("glmnet") |> 
+  set_mode("regression")
+
+#create a workflow for fitting
+workflow <- workflow() |> 
+  add_model(mod_spec) |> 
+  add_recipe(dic_recipe)
+
+#fit the model onto training data
+fit_mod <- workflow |> 
+  fit(data_train)
+
+#evaluate on test data
+predictions <- fit_mod |> 
+  predict(data_test) |> 
+  bind_cols(data_test)
+
+#get some performance metrics
+metrics <- predictions |> 
+  metrics(truth = DIC,
+          estimate = .pred)
+
+metrics
+
+final_rmse <- metrics[1,3]
+final_rmse
+#for comparison, rmse with an lambda of 11 was almost twice this
+
+```
+Create test data output:
+```{r}
+#fit to test data and format df for export
+final_test <- fit_mod |> 
+  predict(calcofi_testing) |> 
+  bind_cols(calcofi_testing) |> 
+  rename(DIC = .pred) |> 
+  select(c(id, DIC))
+
+#save to working directory
+write_csv(final_test, "bishop_test_predictions.csv")
+
+
+
+```
+
+
+# Exploration and model building
+
+Check out a linear model and look at the data just to get a good baseline feel:
+```{r}
+#just set up a simple linear regression to see how it looks
+
+linearmod <- lm(data = data_train,
+                formula = DIC ~ Salinity1 + Temperature_degC + R_TEMP + R_Depth + R_Sal + R_DYNHT + R_Nuts + R_Oxy_micromol.Kg + PO4uM + SiO3uM + TA1)
+
+summary(linearmod)
+
+ggplot(data = data_train,
+       aes(x = Salinity1,
+           y = DIC,
+           color = R_Nuts)) +
+  geom_point()
+
+```
+
+## Create a ridge regression model
+```{r}
+
+#Create training feature matrix
+train_matrix <- model.matrix(DIC ~., data_train) 
+#remove intercept column
+train_matrix <- train_matrix[,-1] 
+
+#assign y to outcome variable
+DIC <- data_train$DIC
+
+#fit a ridge model with alpha = 0
+ridgemod <- glmnet(x = train_matrix,
+                    y = DIC,
+                    alpha = 0)
+
+#plot
+plot(ridgemod, xvar = "lambda")
+
+
+```
+
+```{r}
+
+#fit a ridge model with alpha = 0
+lassomod <- glmnet(x = train_matrix,
+                    y = DIC,
+                    alpha = 1)
+
+#plot
+plot(lassomod, xvar = "lambda")
+
+```
+
+Looks like a lambda of 6 or so will reduce variance
+What about a lasso or an elastic net?
+
+Going to use a RIDGE model because better at systematically handling correlated features / multicolinearity
+
+## Tune the ridge regression
+```{r}
+
+#create ridge model with k-fold cross-validation
+#default is 10 oflds, but can specify with nfolds =
+ridge_cv <- cv.glmnet(x = train_matrix,
+                      y = DIC,
+                      alpha = 0)
+                      
+
+ridgecv_plot <- plot(ridge_cv, 
+                     main = "Ridge penalty\n\n")
+
+
+
+ ridgecv_plot 
+
+# Ridge model
+MSE1 <- min(ridge_cv$cvm)       # minimum MSE
+#83.219
+MSE1
+
+#RMSE
+sqrt(MSE1) #7.95 not so good...
+
+ridge_cv$lambda.min     # lambda for this min MSE
+# 11.276
+
+
+
+```
+
+```{r}
+
+# Ridge model
+ridge_min <- glmnet(
+  x = train_matrix,
+  y = DIC,
+  alpha = 0
+)
+
+# Lasso model
+lasso_min <- glmnet(
+  x = train_matrix,
+  y = DIC,
+  alpha = 1
+)
+
+par(mfrow = c(1, 2))
+# plot ridge model
+plot(ridge_min, xvar = "lambda", main = "Ridge penalty\n\n") +
+abline(v = log(ridge_cv$lambda.min), col = "red", lty = "dashed")+
+abline(v = log(ridge_cv$lambda.1se), col = "blue", lty = "dashed")
+
+```
+
+## Elastic net
+
+```{r}
+
+set.seed(228)
+
+cv_glmnet <- train(
+  x = train_matrix,
+  y = DIC,
+  method = "glmnet",
+  preProcess = c("center", "scale"), #normalize
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 10
+)
+
+#check out the best one
+cv_glmnet$bestTune
+
+#alpha = 0.8
+#lambda = 0.2780342
+
+```
+
+
+
+```{r}
+
+#look at results from the best model
+cv_glmnet$results |> 
+  filter(alpha == cv_glmnet$bestTune$alpha,
+         lambda == cv_glmnet$bestTune$lambda)
+
+
+```
+
+
+
+
 
 
 
